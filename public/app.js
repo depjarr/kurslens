@@ -439,7 +439,9 @@ function renderShelfTags(r, area, animate) {
     el.className = "shelf-sticker";
     el.dataset.open = "detail";
     el.setAttribute("aria-label", `${t.name_translated || "Produk"}: ${fmt(v, state.to)}`);
-    el.innerHTML = `<b>${esc(fmt(v, state.to))}</b><small>${esc(fmt(t.price, cur))}</small>`;
+    const kcal = t.is_food !== false && t.kcal != null ? ` · ${Math.round(t.kcal)} kkal` : "";
+    el.innerHTML = `<b>${esc(fmt(v, state.to))}</b><small>${esc(fmt(t.price, cur) + kcal)}</small>`;
+    el.style.animationDelay = `${i * 70}ms`;
     layer.append(ring, el);
     countUp(el.querySelector("b"), v, state.to, animate);
     placeFree(el, b.x + b.w / 2 - el.offsetWidth / 2, b.y - el.offsetHeight - 8, area);
@@ -514,6 +516,47 @@ function dietBanner(check) {
   </div>`;
 }
 
+// ---------------- Gizi per item (menu & label rak) ----------------
+const gfmt = (v) => `${String(Math.round(v * 10) / 10).replace(".", ",")} g`;
+function itemNutriHtml(it) {
+  if (!it || it.is_food === false || it.kcal == null) return "";
+  const c = (it.carbs_g || 0) * 4, f = (it.fat_g || 0) * 9, p = (it.protein_g || 0) * 4, tot = c + f + p;
+  const parts = [
+    it.protein_g != null && `Protein ${gfmt(it.protein_g)}`,
+    it.fat_g != null && `Lemak ${gfmt(it.fat_g)}`,
+    it.carbs_g != null && `Karbo ${gfmt(it.carbs_g)}`,
+  ].filter(Boolean);
+  return `<div class="item-nutri">
+    <span class="kcal-pill">≈ <b data-count="${Math.round(it.kcal)}">${Math.round(it.kcal)}</b> kkal</span>
+    ${parts.length ? `<span class="macro-text">${parts.join(" · ")}</span>` : ""}
+    ${tot > 0 ? `<span class="macro-bar" aria-hidden="true"><i style="flex:${c};background:var(--primary)"></i><i style="flex:${f};background:var(--chart-2)"></i><i style="flex:${p};background:var(--muted)"></i></span>` : ""}
+  </div>`;
+}
+
+// Angka kalori di halaman detail ikut "berputar" saat pertama tampil
+function countNumbers(root) {
+  if (reduceMotion.matches) return;
+  root.querySelectorAll("[data-count]").forEach((el) => {
+    const end = Number(el.dataset.count), start = performance.now(), dur = 650;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(end * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    el.textContent = "0";
+    requestAnimationFrame(step);
+    setTimeout(() => { el.textContent = end; }, dur + 80);
+  });
+}
+
+// Isi halaman detail hanya diganti kalau memang berubah, supaya animasi masuk tidak terulang terus
+function setHtml(el, h) {
+  if (el._html === h) return;
+  el._html = h;
+  el.innerHTML = h;
+  countNumbers(el);
+}
+
 // ---------------- Mode menu restoran ----------------
 function menuPriceHtml(price, cur) {
   if (price == null || !cur) return `<b>—</b>`;
@@ -533,14 +576,15 @@ function menuHtml(r) {
   let h = `<div class="menu-head"><h1 class="detail-title" style="margin-top:0">Menu · ${items.length} item</h1></div>
     <div class="detail-orig">${one != null ? `1 ${esc(cur)} = ${fmtRate(one, state.to)}` : esc(cur)}${state.diet.length ? ` · ${bad} tidak cocok untukmu` : ""}</div>
     <div class="menu-list">`;
-  for (const it of items) {
-    h += `<div class="menu-item">
+  items.forEach((it, i) => {
+    h += `<div class="menu-item" style="--i:${Math.min(i, 12)}">
       <div><b>${esc(it.name_translated || it.name_original)}</b><div class="orig jp">${esc(it.name_original)}</div></div>
       <div class="price">${menuPriceHtml(it.price, cur)}</div>
       ${it.description ? `<p class="desc">${esc(it.description)}</p>` : ""}
+      ${itemNutriHtml(it)}
       ${(it.tags?.length || state.diet.length) ? `<div class="tags">${dietBadge(it.diet_status, it.diet_reason)}${(it.tags || []).map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
     </div>`;
-  }
+  });
   h += `</div>`;
   if (r.notes) h += `<div class="note">${esc(r.notes)}</div>`;
   h += `<p class="fine" style="margin:12px 0 0">Dibaca AI dari foto. Tanyakan ke pelayan kalau kamu punya alergi.</p>` + actionsHtml();
@@ -656,7 +700,7 @@ function renderDetail() {
   const r = state.result;
   if (!r || $("detail").hidden) return;
   $("detailMeta").textContent = metaText();
-  $("detailBody").innerHTML = detailHtml(r);
+  setHtml($("detailBody"), detailHtml(r));
 }
 
 function metaText() {
@@ -685,7 +729,7 @@ function renderSidePanel() {
     if (state.error) h += `<p class="error" style="margin-top:12px">${esc(state.error)}</p>`;
   }
   if ((r || state.error) && !state.busy) h = CLOSE_BTN("panel-close") + h;
-  el.innerHTML = h;
+  setHtml(el, h);
 }
 
 function detailHtml(r) {
@@ -715,7 +759,7 @@ function detailHtml(r) {
     const cur = shelfCur(r);
     h += `<div class="h2">Harga lain di rak ini</div><div class="price-table">` + others.map((t) => {
       const v = convert(t.price, cur, state.to);
-      return `<div class="price-row"><span class="lbl">${esc(t.name_translated || t.name_original || "Produk lain")}</span>
+      return `<div class="price-row shelf-row"><span class="lbl">${esc(t.name_translated || t.name_original || "Produk lain")}${itemNutriHtml(t)}</span>
         <span class="orig">${fmt(t.price, cur)}</span><span class="conv">${v != null ? fmt(v, state.to) : "?"}</span></div>`;
     }).join("") + `</div>`;
   }
@@ -738,7 +782,7 @@ function detailHtml(r) {
     const g = (v, u) => (v == null ? "—" : `${String(Math.round(v * 10) / 10).replace(".", ",")} ${u}`);
     h += `<div class="h2"><span>Gizi ${esc(n.serving ? "· " + n.serving : "")}</span><span class="badge">${n.source === "label" ? "dari label" : "perkiraan AI"}</span></div>
       <div class="nutri">
-        <div class="kcal"><b>${n.calories_kcal == null ? "—" : Math.round(n.calories_kcal)}</b><span>kkal</span></div>
+        <div class="kcal">${n.calories_kcal == null ? "<b>—</b>" : `<b data-count="${Math.round(n.calories_kcal)}">${Math.round(n.calories_kcal)}</b>`}<span>kkal</span></div>
         ${tot > 0 ? `<div class="energy" role="img" aria-label="Sumber energi: karbohidrat ${Math.round(c / tot * 100)}%, lemak ${Math.round(f / tot * 100)}%, protein ${Math.round(pr / tot * 100)}%">
           <i style="flex:${c};background:var(--primary)"></i><i style="flex:${f};background:var(--chart-2);box-shadow:var(--outline)"></i><i style="flex:${pr};background:var(--muted)"></i></div>` : ""}
         <div class="macro-grid">
@@ -958,7 +1002,8 @@ function shareText(r) {
       const v = it.price != null && cur ? convert(it.price, cur, state.to) : null;
       const price = v != null ? `${fmt(v, state.to)} (${fmt(it.price, cur)})` : "harga tidak tertulis";
       const warn = state.diet.length && it.diet_status === "tidak_cocok" ? " [tidak cocok]" : "";
-      return `• ${it.name_translated || it.name_original}: ${price}${warn}`;
+      const kcal = it.is_food !== false && it.kcal != null ? `, ±${Math.round(it.kcal)} kkal` : "";
+      return `• ${it.name_translated || it.name_original}: ${price}${kcal}${warn}`;
     });
     return `Menu (${(r.items || []).length} item), dicek pakai KursLens:\n${lines.join("\n")}`;
   }

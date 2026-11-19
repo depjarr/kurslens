@@ -160,6 +160,16 @@ const SCAN_SCHEMA = {
   },
 };
 
+// Perkiraan gizi per item (per porsi/kemasan). Semuanya null kalau item bukan makanan/minuman.
+const ITEM_NUTRI = {
+  is_food: { type: "boolean", description: "true jika makanan atau minuman; false untuk barang lain (kosmetik, alat, dll)" },
+  kcal: { ...nullableNum, description: "perkiraan kalori per porsi/kemasan; null jika bukan makanan/minuman" },
+  protein_g: nullableNum,
+  fat_g: nullableNum,
+  carbs_g: nullableNum,
+};
+const ITEM_NUTRI_KEYS = Object.keys(ITEM_NUTRI);
+
 // Satu skema untuk semua foto: AI sendiri yang menentukan apakah ini produk/label harga atau menu restoran.
 const MENU_FIELDS = {
     kind: {
@@ -174,7 +184,7 @@ const MENU_FIELDS = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["name_original", "name_translated", "description", "price", "tags", "diet_status", "diet_reason"],
+        required: ["name_original", "name_translated", "description", "price", "tags", "diet_status", "diet_reason", ...ITEM_NUTRI_KEYS],
         properties: {
           name_original: { type: "string" },
           name_translated: { type: "string" },
@@ -183,6 +193,7 @@ const MENU_FIELDS = {
           tags: { type: "array", description: "mis. pedas, babi, sapi, ayam, seafood, alkohol, vegetarian", items: { type: "string" } },
           diet_status: DIET_STATUS,
           diet_reason: { type: "string" },
+          ...ITEM_NUTRI,
         },
       },
     },
@@ -194,12 +205,13 @@ const shelfTags = (box) => ({
   items: {
     type: "object",
     additionalProperties: false,
-    required: ["name_original", "name_translated", "price", "box"],
+    required: ["name_original", "name_translated", "price", "box", ...ITEM_NUTRI_KEYS],
     properties: {
       name_original: { type: "string", description: "nama produk di label/kemasan yang dipajang tepat di atas/dekat label itu; kosong jika tidak terbaca" },
       name_translated: { type: "string" },
       price: { type: "number" },
       box: box,
+      ...ITEM_NUTRI,
     },
   },
 });
@@ -274,6 +286,9 @@ function buildPrompt({ language, sourceCurrency, camera, diet }) {
     "Ambil semua harga yang terlihat untuk produk itu (di Jepang: 税込 = termasuk pajak, 税抜/本体価格 = sebelum pajak). " +
     `Terjemahkan nama produk dan tulisan penting ke ${language}. ` +
     "Gizi: pakai angka dari label gizi jika terlihat (source='label'); jika tidak, perkirakan dari jenis produk (source='estimate'); jika tidak bisa, null dan source='none'. " +
+    "Jika produk utama bukan makanan/minuman (kosmetik, alat, pakaian, dll), nutrition null dengan source='none' dan allergens kosong. " +
+    "Untuk SETIAP item menu dan setiap label rak lain: isi is_food, lalu perkirakan kcal, protein_g, fat_g, carbs_g per porsi/kemasan " +
+    "berdasarkan jenis hidangan/produk yang umum; semua null jika is_food=false. " +
     "Kotak price_box mengelilingi label harga utama, product_box mengelilingi produk; found=false jika tidak ada. " +
     "Jangan mengarang harga: jika tidak terbaca, prices kosong. " +
     dietHint +

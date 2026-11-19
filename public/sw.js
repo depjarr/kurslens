@@ -1,7 +1,7 @@
 // Service worker KursLens: membuat aplikasi bisa dipasang & tampilan tetap terbuka saat sinyal hilang.
 // Strategi: ambil dari internet dulu (selalu versi terbaru), pakai simpanan kalau offline.
 // Scan AI dan kurs (/api/...) tidak pernah disimpan di sini; kurs terakhir sudah ditangani server.
-const CACHE = "kurslens-v7";
+const CACHE = "kurslens-v8";
 const SHELL = [
   "/",
   "/index.html",

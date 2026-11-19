@@ -187,10 +187,33 @@ const MENU_FIELDS = {
       },
     },
 };
+// Label harga lain di rak (selain produk utama): tiap label dapat stiker sendiri
+const shelfTags = (box) => ({
+  type: "array",
+  description: "kind=product: label harga LAIN yang angkanya terbaca jelas di foto, selain produk utama (maks 8). Lewati label yang buram. kind=menu: kosong",
+  items: {
+    type: "object",
+    additionalProperties: false,
+    required: ["name_original", "name_translated", "price", "box"],
+    properties: {
+      name_original: { type: "string", description: "nama produk di label/kemasan yang dipajang tepat di atas/dekat label itu; kosong jika tidak terbaca" },
+      name_translated: { type: "string" },
+      price: { type: "number" },
+      box: box,
+    },
+  },
+});
+
 const SCHEMA = {
   ...SCAN_SCHEMA,
-  required: ["kind", ...SCAN_SCHEMA.required, "currency", "items"],
-  properties: { kind: MENU_FIELDS.kind, ...SCAN_SCHEMA.properties, currency: MENU_FIELDS.currency, items: MENU_FIELDS.items },
+  required: ["kind", ...SCAN_SCHEMA.required, "currency", "items", "shelf_tags"],
+  properties: {
+    kind: MENU_FIELDS.kind,
+    ...SCAN_SCHEMA.properties,
+    currency: { type: "string", description: "kode ISO 4217 untuk harga di menu / label rak, mis. KRW" },
+    items: MENU_FIELDS.items,
+    shelf_tags: shelfTags(BOX),
+  },
 };
 
 // Gemini paling akurat memberi kotak dalam format bawaannya: box_2d = [ymin, xmin, ymax, xmax] skala 0..1000.
@@ -211,7 +234,7 @@ const GEMINI_BOX = {
 };
 const GEMINI_SCHEMA = {
   ...SCHEMA,
-  properties: { ...SCHEMA.properties, price_box: GEMINI_BOX, product_box: GEMINI_BOX },
+  properties: { ...SCHEMA.properties, price_box: GEMINI_BOX, product_box: GEMINI_BOX, shelf_tags: shelfTags(GEMINI_BOX) },
 };
 
 function fromBox2d(b) {
@@ -244,7 +267,9 @@ function buildPrompt({ language, sourceCurrency, camera, diet }) {
     "JIKA kind='menu': isi currency dan items (setiap hidangan/minuman, price=null jika tidak tertulis, terjemahkan nama, jelaskan isinya singkat, " +
     "tag seperti pedas/babi/sapi/ayam/seafood/alkohol/vegetarian, dan diet_status per item). " +
     "Untuk field produk isi nilai kosong: subject='none', nama kosong, prices kosong, kotak found=false, nutrition null dengan source='none', allergens kosong, diet_check tidak_pasti. " +
-    "JIKA kind='product': currency kosong dan items kosong, lalu kenali produk utama dan label harganya. " +
+    "JIKA kind='product': items kosong, isi currency dengan mata uang label harga, lalu kenali produk utama (paling dekat/menonjol/di tengah) dan label harganya. " +
+    "Foto bisa diambil agak jauh dan berisi rak dengan banyak label: baca setiap label harga yang angkanya jelas; label produk utama masuk prices, label lain masuk shelf_tags " +
+    "beserta nama produk yang dipajang di atas/dekat label itu. Di rak, label harga biasanya ada di bawah produknya. " +
     "Ambil semua harga yang terlihat untuk produk itu (di Jepang: 税込 = termasuk pajak, 税抜/本体価格 = sebelum pajak). " +
     `Terjemahkan nama produk dan tulisan penting ke ${language}. ` +
     "Gizi: pakai angka dari label gizi jika terlihat (source='label'); jika tidak, perkirakan dari jenis produk (source='estimate'); jika tidak bisa, null dan source='none'. " +
@@ -300,6 +325,7 @@ async function scanWithGemini({ mime, data, prompt }) {
   const out = JSON.parse(text);
   out.price_box = fromBox2d(out.price_box);
   out.product_box = fromBox2d(out.product_box);
+  out.shelf_tags = (out.shelf_tags || []).map((t) => ({ ...t, box: fromBox2d(t.box) }));
   return out;
 }
 

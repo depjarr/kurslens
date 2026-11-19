@@ -169,7 +169,7 @@ async function startCamera() {
   stream = null;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: state.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      video: { facingMode: { ideal: state.facing }, width: { ideal: 2560 }, height: { ideal: 1440 } },
       audio: false,
     });
     video.srcObject = stream;
@@ -190,13 +190,14 @@ async function startCamera() {
 function liveReady() { return !!stream && video.videoWidth > 0 && still.hidden; }
 
 const canvas = document.createElement("canvas");
+// Foto dikirim sampai 1920 px (sisi terpanjang) supaya label harga yang agak jauh masih terbaca
 function grab(source, w, h) {
-  const max = 1280, s = Math.min(1, max / Math.max(w, h));
+  const max = 1920, s = Math.min(1, max / Math.max(w, h));
   canvas.width = Math.round(w * s);
   canvas.height = Math.round(h * s);
   // gambar mentah (tidak dicerminkan) → teks kamera depan terbaca normal oleh AI
   canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height);
-  return canvas.toDataURL("image/jpeg", 0.82);
+  return canvas.toDataURL("image/jpeg", 0.86);
 }
 
 // --- deteksi pindah produk (beda gambar) ---
@@ -367,10 +368,46 @@ function placeFree(el, left, top, area) {
   el.style.top = clamp(top, area.top, maxTop) + "px";
 }
 
+// Mata uang label rak: pilihan pengguna, atau yang dikenali AI
+function shelfCur(r) {
+  return state.from === "auto" ? (r.currency || mainPrice(r)?.currency || "").toUpperCase() : state.from;
+}
+
+// Stiker kecil untuk label harga lain di rak (foto agak jauh berisi banyak produk)
+function renderShelfTags(r, area) {
+  let layer = $("shelfLayer");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "shelfLayer";
+    $("overlay").prepend(layer);
+  }
+  layer.innerHTML = "";
+  if (!r || !state.resultFresh || r.kind === "menu") return;
+  const cur = shelfCur(r);
+  (r.shelf_tags || []).forEach((t, i) => {
+    if (!t.box?.found || !(t.price > 0)) return;
+    const v = convert(t.price, cur, state.to);
+    if (v == null) return;
+    const b = mapBox(t.box);
+    const ring = document.createElement("div");
+    ring.className = "shelf-ring";
+    Object.assign(ring.style, { left: b.x - 4 + "px", top: b.y - 4 + "px", width: b.w + 8 + "px", height: b.h + 8 + "px" });
+    const el = document.createElement("button");
+    el.className = "shelf-sticker";
+    el.dataset.open = "detail";
+    el.setAttribute("aria-label", `${t.name_translated || "Produk"}: ${fmt(v, state.to)}`);
+    el.innerHTML = `<b>${esc(fmt(v, state.to))}</b><small>${esc(fmt(t.price, cur))}</small>`;
+    layer.append(ring, el);
+    placeFree(el, b.x + b.w / 2 - el.offsetWidth / 2, b.y - el.offsetHeight - 8, area);
+  });
+}
+
 function renderOverlay() {
   const st = $("sticker"), corners = $("corners"), tag = $("productTag");
   const r = state.result;
   st.hidden = corners.hidden = tag.hidden = true;
+  const area = freeArea(), { cw, ch } = area;
+  renderShelfTags(r, area);
   if (!r || !state.resultFresh || r.subject === "none" || r.kind === "menu") return;
   const warn = state.diet.length > 0 && r.diet_check?.status === "tidak_cocok";
   st.classList.toggle("warn", warn);
@@ -379,7 +416,6 @@ function renderOverlay() {
   const p = mainPrice(r);
   const boxSrc = p && r.price_box?.found ? r.price_box : r.product_box?.found ? r.product_box : null;
   const box = boxSrc ? mapBox(boxSrc) : null;
-  const area = freeArea(), { cw, ch } = area;
 
   if (box) {
     Object.assign(corners.style, { left: box.x - 10 + "px", top: box.y - 10 + "px", width: box.w + 20 + "px", height: box.h + 20 + "px" });
@@ -604,6 +640,17 @@ function detailHtml(r) {
   }
   h += `<h1 class="detail-title" style="${p ? "" : "margin-top:0"}">${esc(r.product_name_translated || "Produk")}</h1>
         <div class="detail-orig jp">${esc(r.product_name_original)}</div>` + dietBanner(r.diet_check);
+
+  // Label harga lain yang terbaca di rak yang sama
+  const others = (r.shelf_tags || []).filter((t) => t.price > 0);
+  if (others.length) {
+    const cur = shelfCur(r);
+    h += `<div class="h2">Harga lain di rak ini</div><div class="price-table">` + others.map((t) => {
+      const v = convert(t.price, cur, state.to);
+      return `<div class="price-row"><span class="lbl">${esc(t.name_translated || t.name_original || "Produk lain")}</span>
+        <span class="orig">${fmt(t.price, cur)}</span><span class="conv">${v != null ? fmt(v, state.to) : "?"}</span></div>`;
+    }).join("") + `</div>`;
+  }
   if (!p && isDesk()) {
     const cur = esc(effFrom() || "JPY");
     h += `<div class="panel-manual"><p>Harga tidak terlihat. Dekatkan label harga ke webcam, atau isi sendiri.</p>
@@ -1023,12 +1070,20 @@ function addDemoScene() {
     <div class="scene-shelf" style="top:44%"></div>
     <div class="shelf-tag" id="demoTag" style="top:calc(44% + 18px)"><div class="jp small">ツナマヨネーズ おにぎり</div>
       <div class="tag-price"><span class="jp tax">税込</span><span>¥140</span></div>
-      <div class="jp small" style="font-size:10px;margin-top:4px;color:#4A4D52">本体価格 ¥130</div></div>`;
+      <div class="jp small" style="font-size:10px;margin-top:4px;color:#4A4D52">本体価格 ¥130</div></div>
+    <div class="shelf-tag" id="demoTag2" style="left:16px;top:24%;transform:none;width:auto;padding:5px 8px"><div class="jp small" style="font-size:9px">梅おにぎり</div><div class="tag-price" style="font-size:20px">¥128</div></div>
+    <div class="shelf-tag" id="demoTag3" style="left:auto;right:16px;top:24%;transform:none;width:auto;padding:5px 8px"><div class="jp small" style="font-size:9px">鮭おにぎり</div><div class="tag-price" style="font-size:20px">¥160</div></div>`;
   $("stage").prepend(d);
 }
 function removeDemoScene() { $("demoScene")?.remove(); }
 
 let demoTurn = 0;
+function demoBox(id) {
+  const el = $(id), cam = $("stage").getBoundingClientRect();
+  if (!el) return { found: false, x: 0, y: 0, w: 0, h: 0 };
+  const b = el.getBoundingClientRect();
+  return { found: true, x: (b.left - cam.left) / cam.width, y: (b.top - cam.top) / cam.height, w: b.width / cam.width, h: b.height / cam.height };
+}
 // Penilaian profil versi demo (di aplikasi asli, AI yang menilai dari komposisi)
 function demoDiet(contains, halalKnown) {
   if (!state.diet.length) return { status: "tidak_pasti", reasons: [] };
@@ -1079,7 +1134,11 @@ function demoResult(source) {
       { amount: 140, currency: "JPY", label: "Termasuk pajak", tax_included: true },
       { amount: 130, currency: "JPY", label: "Sebelum pajak", tax_included: false },
     ],
-    price_box: box, product_box: none,
+    price_box: box, product_box: none, currency: "JPY",
+    shelf_tags: [
+      { name_original: "梅おにぎり", name_translated: "Onigiri plum asin", price: 128, box: demoBox("demoTag2") },
+      { name_original: "鮭おにぎり", name_translated: "Onigiri salmon", price: 160, box: demoBox("demoTag3") },
+    ],
     text_translation: [
       { original: "国産米使用", translated: "Pakai beras dalam negeri Jepang" },
       { original: "お早めにお召し上がりください", translated: "Sebaiknya segera dimakan" },
@@ -1134,6 +1193,6 @@ renderInstall();
 applyLayout();
 applyTheme();
 $("autoBtn").setAttribute("aria-pressed", state.auto);
-show(store.get("onboarded", false) && !DEMO ? "camera" : "welcome");
+show("welcome"); // selalu mulai dari halaman awal; kamera baru menyala setelah pengguna menekan "Mulai scan harga"
 loadRates();
 setInterval(loadRates, 10 * 60 * 1000);

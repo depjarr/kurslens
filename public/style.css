@@ -192,6 +192,14 @@ button { cursor: pointer; }
 .corners i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
 .sticker.floating { position: absolute; width: 214px; animation: pop .28s cubic-bezier(.2,.9,.3,1.3); transition: left .25s ease, top .25s ease; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+/* Label harga lain di rak: stiker kecil + garis tipis di sekitar labelnya */
+#shelfLayer { position: absolute; inset: 0; pointer-events: none; }
+#shelfLayer > * { pointer-events: auto; }
+.shelf-ring { position: absolute; border: 2px solid var(--accent); border-radius: 8px; opacity: .85; pointer-events: none !important; }
+.shelf-sticker { position: absolute; display: flex; flex-direction: column; align-items: flex-start; gap: 0; padding: 5px 9px 6px; border: 0; border-radius: 10px;
+  background: var(--accent); color: var(--accent-ink); box-shadow: var(--outline), var(--lift); text-align: left; animation: pop .28s cubic-bezier(.2,.9,.3,1.3); }
+.shelf-sticker b { font-size: 15px; font-weight: 800; line-height: 1.15; letter-spacing: -.01em; }
+.shelf-sticker small { font-size: 10px; font-weight: 600; opacity: .8; }
 .product-tag { position: absolute; max-width: 170px; padding: 8px 12px; border-radius: 14px; background: var(--accent); color: var(--accent-ink); font-size: 13px; font-weight: 700; line-height: 1.3; box-shadow: var(--outline), var(--lift); }
 body.scanning .corners i { animation: breathe .8s ease-in-out infinite alternate; }
 @keyframes breathe { to { opacity: .35; } }

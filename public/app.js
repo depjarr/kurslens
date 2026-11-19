@@ -521,10 +521,11 @@ const gfmt = (v) => `${String(Math.round(v * 10) / 10).replace(".", ",")} g`;
 function itemNutriHtml(it) {
   if (!it || it.is_food === false || it.kcal == null) return "";
   const c = (it.carbs_g || 0) * 4, f = (it.fat_g || 0) * 9, p = (it.protein_g || 0) * 4, tot = c + f + p;
+  // urutan sama dengan warna bar dan bagian gizi utama: karbo, lemak, protein
   const parts = [
-    it.protein_g != null && `Protein ${gfmt(it.protein_g)}`,
-    it.fat_g != null && `Lemak ${gfmt(it.fat_g)}`,
     it.carbs_g != null && `Karbo ${gfmt(it.carbs_g)}`,
+    it.fat_g != null && `Lemak ${gfmt(it.fat_g)}`,
+    it.protein_g != null && `Protein ${gfmt(it.protein_g)}`,
   ].filter(Boolean);
   return `<div class="item-nutri">
     <span class="kcal-pill">≈ <b data-count="${Math.round(it.kcal)}">${Math.round(it.kcal)}</b> kkal</span>
@@ -1224,19 +1225,21 @@ function demoDiet(contains, halalKnown) {
 function demoResult(source) {
   const turn = demoTurn++ % 3;
   if (turn === 2) {
-    const item = (o, t, d, price, tags, contains) => {
+    // n = [kkal, protein, lemak, karbo] perkiraan per porsi
+    const item = (o, t, d, price, tags, contains, n) => {
       const c = demoDiet(contains, false);
-      return { name_original: o, name_translated: t, description: d, price, tags, diet_status: c.status, diet_reason: c.reasons[0] || "" };
+      return { name_original: o, name_translated: t, description: d, price, tags, diet_status: c.status, diet_reason: c.reasons[0] || "",
+        is_food: true, kcal: n[0], protein_g: n[1], fat_g: n[2], carbs_g: n[3] };
     };
     return {
       kind: "menu", found: true, currency: "JPY",
       items: [
-        item("豚骨ラーメン", "Ramen tonkotsu", "Kuah kaldu tulang babi, irisan chashu", 980, ["babi"], { "no-pork": "Kuah dan daging babi", halal: "Mengandung babi", wheat: "Mi gandum" }),
-        item("醤油ラーメン", "Ramen shoyu", "Kuah kecap asin, telur, nori", 880, ["ayam"], { egg: "Ada telur rebus", soy: "Kecap kedelai", wheat: "Mi gandum" }),
-        item("海老天丼", "Nasi tempura udang", "Udang goreng tepung di atas nasi", 1200, ["seafood"], { shellfish: "Udang", wheat: "Tepung gandum", egg: "Adonan pakai telur" }),
-        item("野菜カレー", "Kari sayur", "Kari Jepang dengan sayuran", 850, ["vegetarian"], { wheat: "Roux kari dari gandum", milk: "Roux kari biasanya pakai susu" }),
-        item("生ビール", "Bir draft", "", 600, ["alkohol"], { "no-alcohol": "Minuman beralkohol", halal: "Minuman beralkohol" }),
-        item("緑茶", "Teh hijau", "Gratis isi ulang", null, [], {}),
+        item("豚骨ラーメン", "Ramen tonkotsu", "Kuah kaldu tulang babi, irisan chashu", 980, ["babi"], { "no-pork": "Kuah dan daging babi", halal: "Mengandung babi", wheat: "Mi gandum" }, [690, 28, 30, 72]),
+        item("醤油ラーメン", "Ramen shoyu", "Kuah kecap asin, telur, nori", 880, ["ayam"], { egg: "Ada telur rebus", soy: "Kecap kedelai", wheat: "Mi gandum" }, [520, 24, 14, 70]),
+        item("海老天丼", "Nasi tempura udang", "Udang goreng tepung di atas nasi", 1200, ["seafood"], { shellfish: "Udang", wheat: "Tepung gandum", egg: "Adonan pakai telur" }, [760, 22, 24, 110]),
+        item("野菜カレー", "Kari sayur", "Kari Jepang dengan sayuran", 850, ["vegetarian"], { wheat: "Roux kari dari gandum", milk: "Roux kari biasanya pakai susu" }, [640, 12, 20, 102]),
+        item("生ビール", "Bir draft", "", 600, ["alkohol"], { "no-alcohol": "Minuman beralkohol", halal: "Minuman beralkohol" }, [200, 2, 0, 16]),
+        item("緑茶", "Teh hijau", "Gratis isi ulang", null, [], {}, [0, 0, 0, 0]),
       ],
       notes: "Harga sudah termasuk pajak. Ada biaya meja ¥300 per orang setelah jam 18.00.",
     };
@@ -1264,8 +1267,8 @@ function demoResult(source) {
     ],
     price_box: box, product_box: none, currency: "JPY",
     shelf_tags: [
-      { name_original: "梅おにぎり", name_translated: "Onigiri plum asin", price: 128, box: demoBox("demoTag2") },
-      { name_original: "鮭おにぎり", name_translated: "Onigiri salmon", price: 160, box: demoBox("demoTag3") },
+      { name_original: "梅おにぎり", name_translated: "Onigiri plum asin", price: 128, box: demoBox("demoTag2"), is_food: true, kcal: 175, protein_g: 3, fat_g: 0.6, carbs_g: 39 },
+      { name_original: "鮭おにぎり", name_translated: "Onigiri salmon", price: 160, box: demoBox("demoTag3"), is_food: true, kcal: 190, protein_g: 6, fat_g: 1.8, carbs_g: 38 },
     ],
     text_translation: [
       { original: "国産米使用", translated: "Pakai beras dalam negeri Jepang" },

@@ -287,7 +287,8 @@ async function scan(image) {
     state.resultFresh = true;
     state.manualOpen = false;
     const p = mainPrice(data);
-    const detected = data.kind === "menu" ? data.currency : p?.currency;
+    const detected = data.kind === "menu" ? data.currency : p?.currency || data.currency;
+    state.detectedCur = detected ? detected.toUpperCase() : null;
     if (detected && state.from === "auto") {
       const cur = detected.toUpperCase();
       if (cur !== state.lastCurrency) { state.lastCurrency = cur; store.set("lastCurrency", cur); loadTrend(); }
@@ -368,13 +369,28 @@ function placeFree(el, left, top, area) {
   el.style.top = clamp(top, area.top, maxTop) + "px";
 }
 
+// Angka harga "berputar" dari 0 ke nilai akhir saat stiker baru muncul
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+function countUp(el, value, cur, animate) {
+  cancelAnimationFrame(el._raf);
+  if (!animate || reduceMotion.matches) { el.textContent = fmt(value, cur); return; }
+  el.textContent = fmt(0, cur);
+  const start = performance.now(), dur = 700;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur), eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = fmt(value * eased, cur);
+    if (t < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+
 // Mata uang label rak: pilihan pengguna, atau yang dikenali AI
 function shelfCur(r) {
   return state.from === "auto" ? (r.currency || mainPrice(r)?.currency || "").toUpperCase() : state.from;
 }
 
 // Stiker kecil untuk label harga lain di rak (foto agak jauh berisi banyak produk)
-function renderShelfTags(r, area) {
+function renderShelfTags(r, area, animate) {
   let layer = $("shelfLayer");
   if (!layer) {
     layer = document.createElement("div");
@@ -398,6 +414,7 @@ function renderShelfTags(r, area) {
     el.setAttribute("aria-label", `${t.name_translated || "Produk"}: ${fmt(v, state.to)}`);
     el.innerHTML = `<b>${esc(fmt(v, state.to))}</b><small>${esc(fmt(t.price, cur))}</small>`;
     layer.append(ring, el);
+    countUp(el.querySelector("b"), v, state.to, animate);
     placeFree(el, b.x + b.w / 2 - el.offsetWidth / 2, b.y - el.offsetHeight - 8, area);
   });
 }
@@ -407,7 +424,10 @@ function renderOverlay() {
   const r = state.result;
   st.hidden = corners.hidden = tag.hidden = true;
   const area = freeArea(), { cw, ch } = area;
-  renderShelfTags(r, area);
+  // animasi angka hanya untuk hasil scan baru, bukan saat kurs diperbarui atau layar diputar
+  const animate = !!r && state.resultFresh && state.animatedFor !== r;
+  if (animate) state.animatedFor = r;
+  renderShelfTags(r, area, animate);
   if (!r || !state.resultFresh || r.subject === "none" || r.kind === "menu") return;
   const warn = state.diet.length > 0 && r.diet_check?.status === "tidak_cocok";
   st.classList.toggle("warn", warn);
@@ -425,7 +445,8 @@ function renderOverlay() {
   if (p) {
     const cur = priceCur(p), conv = convert(p.amount, cur, state.to);
     $("stCode").textContent = state.to;
-    $("stAmount").textContent = conv != null ? fmt(conv, state.to) : "—";
+    if (conv != null) countUp($("stAmount"), conv, state.to, animate);
+    else $("stAmount").textContent = "—";
     $("stSub").textContent = `${fmt(p.amount, cur)}${p.label ? " · " + p.label.toLowerCase() : ""}`;
     st.hidden = false;
     const sw = st.offsetWidth, sh = st.offsetHeight;
@@ -521,7 +542,7 @@ function renderCard() {
   if (isDesk()) { card.innerHTML = ""; card.hidden = true; return; } // PC: hasil tampil di panel samping
   let html = "";
   if (state.busy && !r) {
-    html = `<div class="loading"><div class="spinner"></div>AI sedang membaca…</div>`;
+    html = `<div class="loading"><img class="loading-pipit" src="/icons/pipit.svg" alt="" /><span class="dots">Pipit lagi membaca label</span></div>`;
   } else if (state.error && !r) {
     html = `<p class="error">${esc(state.error)}</p>`;
   } else if (!r) {
@@ -603,7 +624,7 @@ function renderSidePanel() {
   let h = "";
   if (!r || (r.subject === "none" && r.kind !== "menu")) {
     h = `<div class="panel-empty"><img class="panel-pipit" src="/icons/pipit.svg" alt="" />
-      ${state.busy ? `<div class="loading"><div class="spinner"></div>AI sedang membaca…</div>` : `<div class="eyebrow">${r ? "Belum terbaca" : "Siap scan"}</div>`}
+      ${state.busy ? `<div class="loading"><div class="spinner"></div><span class="dots">Pipit lagi membaca label</span></div>` : `<div class="eyebrow">${r ? "Belum terbaca" : "Siap scan"}</div>`}
       <h2>${r ? "Belum ada produk terlihat" : "Pegang produk di depan webcam"}</h2>
       <p>Harga, terjemahan kemasan, dan info gizi akan muncul di sini.</p>
       <ol>
@@ -693,7 +714,17 @@ function detailHtml(r) {
 // ---------------- Pair + currency page ----------------
 function renderPair() {
   const f = effFrom();
-  $("pairFrom").textContent = state.from === "auto" ? (f ? f : "Auto") : state.from;
+  // Mode otomatis diberi tanda kecil "auto" supaya jelas mata uangnya ikut label
+  $("pairFrom").innerHTML = state.from === "auto"
+    ? `${esc(f || "Auto")}${f ? '<i class="auto-tag">auto</i>' : ""}`
+    : esc(state.from);
+
+  // Mata uang dipilih manual, tapi label yang di-scan jelas pakai mata uang lain → tawarkan ganti
+  const warn = $("curWarn");
+  const det = state.detectedCur;
+  const mismatch = state.from !== "auto" && det && det !== state.from && state.rates?.rates?.[det];
+  warn.hidden = !mismatch;
+  if (mismatch) warn.innerHTML = `Label pakai ${esc(det)}, bukan ${esc(state.from)} · <b>Ganti</b>`;
   $("pairTo").textContent = state.to;
   const one = f ? convert(1, f, state.to) : null;
   const rate = $("pairRate");
@@ -1007,6 +1038,9 @@ document.addEventListener("click", (e) => {
     case "manualBtn": state.manualOpen = true; return renderCard();
     case "installBtn": return installApp();
     case "shareBtn": return shareResult();
+    case "curWarn":
+      setCurrency("from", "auto");
+      return toast(`Mata uang kembali otomatis: ${state.detectedCur}`);
     case "saveBtn": {
       const r = state.result, p = mainPrice(r);
       const name = r.kind === "menu" ? `Menu (${(r.items || []).length} item)` : r.product_name_translated || r.product_name_original;

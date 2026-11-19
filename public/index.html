@@ -84,6 +84,7 @@
     <div id="stage" class="stage">
       <video id="video" autoplay playsinline muted></video>
       <img id="still" alt="" hidden />
+      <div class="scan-line" aria-hidden="true"></div>
       <div id="noCam" class="no-cam" hidden>
         <p>Kamera tidak bisa dibuka.</p>
         <p class="fine">Izinkan akses kamera, dan buka lewat HTTPS atau localhost. Kamu tetap bisa unggah foto dari galeri.</p>
@@ -113,6 +114,7 @@
       </button>
     </header>
     <div class="cam-chips">
+      <button id="curWarn" class="chip cur-warn" hidden></button>
       <span id="trendChip" class="glass chip" hidden></span>
       <span id="rateTime" class="glass chip muted-chip">Memuat kurs…</span>
       <button id="autoBtn" class="glass chip" aria-pressed="false"><span class="switch" aria-hidden="true"><span></span></span>Auto</button>

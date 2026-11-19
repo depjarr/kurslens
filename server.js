@@ -249,7 +249,8 @@ function buildPrompt({ language, sourceCurrency, camera, diet }) {
   const currencyHint =
     sourceCurrency === "auto"
       ? "Tentukan mata uang dari konteks (simbol, bahasa, toko). ¥/円 = JPY, ₩/원 = KRW, ฿ = THB, ₽/руб = RUB, RM = MYR, S$ = SGD."
-      : `Anggap semua harga dalam ${sourceCurrency} kecuali jelas tertulis lain.`;
+      : `Pengguna memilih ${sourceCurrency} sebagai mata uang asal, tapi tetap isi kode mata uang sesuai yang benar-benar terlihat dari konteks ` +
+        `(simbol, bahasa label, negara toko; mis. label berbahasa Korea = KRW). Pakai ${sourceCurrency} hanya jika konteksnya tidak bisa ditentukan.`;
   const dietHint = diet.length
     ? `Profil makanan pengguna: ${diet.join(", ")}. Nilai kecocokan berdasarkan bahan/komposisi yang terbaca dan pengetahuan umum tentang produk/hidangan itu. ` +
       "Jika ada bahan yang melanggar profil → tidak_cocok, sebutkan bahannya. Jika aman → cocok. " +

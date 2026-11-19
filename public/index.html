@@ -43,8 +43,12 @@
     <h1 class="onboard-title">Harga di rak, langsung dalam rupiah.</h1>
     <p class="onboard-text">Arahkan kamera ke label harga atau produk di tanganmu. KursLens menghitung harganya, menerjemahkan kemasan, dan membaca info gizinya.</p>
     <div class="grow"></div>
-    <button class="btn btn-accent" data-go="how">Mulai</button>
-    <button class="btn btn-ghost" data-go="camera">Langsung ke kamera</button>
+    <button class="btn btn-primary btn-cta" data-go="camera">
+      <span class="cta-ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7a2 2 0 0 1 2-2h1.6l1.2-1.6h5.4L13.9 5h1.6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/><circle cx="10" cy="10.5" r="3"/></svg></span>
+      <span class="cta-label">Mulai scan harga</span>
+      <svg class="cta-arrow" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9h11M10 4.5L14.5 9 10 13.5"/></svg>
+    </button>
+    <button class="btn btn-link" data-go="how">Lihat cara kerjanya</button>
   </section>
 
   <section id="how" class="view onboard light" hidden>
@@ -68,7 +72,11 @@
     </ol>
     <div class="grow"></div>
     <p class="fine">Foto dikirim ke AI hanya untuk dibaca dan tidak disimpan di aplikasi. Butuh koneksi internet.</p>
-    <button class="btn btn-primary" data-go="camera">Izinkan kamera</button>
+    <button class="btn btn-primary btn-cta" data-go="camera">
+      <span class="cta-ic" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7a2 2 0 0 1 2-2h1.6l1.2-1.6h5.4L13.9 5h1.6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2z"/><circle cx="10" cy="10.5" r="3"/></svg></span>
+      <span class="cta-label">Nyalakan kamera</span>
+      <svg class="cta-arrow" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 9h11M10 4.5L14.5 9 10 13.5"/></svg>
+    </button>
   </section>
 
   <!-- ===== Camera ===== -->

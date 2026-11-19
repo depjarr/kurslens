@@ -85,6 +85,33 @@
       <video id="video" autoplay playsinline muted></video>
       <img id="still" alt="" hidden />
       <div class="scan-line" aria-hidden="true"></div>
+      <div class="scan-buddy" aria-hidden="true">
+        <svg viewBox="20 26 128 128">
+          <g class="pip-body">
+            <path d="M68 140 v8 M92 140 v8 M64 148 h8 M88 148 h8" stroke="#F28C28" stroke-width="3.5" stroke-linecap="round"/>
+            <circle cx="80" cy="94" r="46" fill="#FFC23D"/>
+            <ellipse cx="80" cy="118" rx="26" ry="20" fill="#FFFFFF"/>
+            <path d="M73 107 V129 M73 118 L87 107 M73 118 L87 129" stroke="#5B4CF0" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M40 60 Q80 30 120 60 Z" fill="#FFFFFF"/>
+            <rect x="30" y="56" width="100" height="10" rx="5" fill="#FFFFFF"/>
+            <rect x="46" y="54" width="68" height="5" rx="2.5" fill="#FF8FA3"/>
+            <circle cx="66" cy="84" r="7.5" fill="#14141F"/>
+            <circle cx="98" cy="84" r="7.5" fill="#14141F"/>
+            <circle cx="69" cy="81" r="3" fill="#FFFFFF"/>
+            <circle cx="101" cy="81" r="3" fill="#FFFFFF"/>
+            <path d="M76 93 L82 88 L88 93 L82 99 Z" fill="#F28C28"/>
+            <ellipse cx="52" cy="97" rx="6.5" ry="4" fill="#FF8FA3"/>
+            <ellipse cx="108" cy="97" rx="6.5" ry="4" fill="#FF8FA3"/>
+            <ellipse cx="42" cy="112" rx="8" ry="13" fill="#F5A915" transform="rotate(20 42 112)"/>
+            <ellipse cx="120" cy="110" rx="8" ry="13" fill="#F5A915" transform="rotate(-35 120 110)"/>
+          </g>
+          <g class="pip-mag">
+            <line x1="131" y1="108" x2="142" y2="120" stroke="#14141F" stroke-width="7" stroke-linecap="round"/>
+            <circle cx="120" cy="96" r="16" fill="#FFFFFF" fill-opacity=".45" stroke="#5B4CF0" stroke-width="6"/>
+          </g>
+        </svg>
+        <span class="buddy-bubble dots">Lagi membaca</span>
+      </div>
       <div id="noCam" class="no-cam" hidden>
         <p>Kamera tidak bisa dibuka.</p>
         <p class="fine">Izinkan akses kamera, dan buka lewat HTTPS atau localhost. Kamu tetap bisa unggah foto dari galeri.</p>

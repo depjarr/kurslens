@@ -555,6 +555,22 @@ function actionsHtml() {
     </div>`;
 }
 
+const CLOSE_BTN = (cls) => `<button class="${cls}" id="clearBtn" aria-label="Tutup hasil dan scan lagi">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>`;
+
+// Tutup hasil: hapus stiker & kartu, kembali ke kamera live, siap scan lagi
+function clearResult() {
+  state.result = null;
+  state.resultFresh = false;
+  state.error = null;
+  state.manualOpen = false;
+  if (!still.hidden) { still.hidden = true; video.hidden = false; }
+  scanThumb = null;
+  state.lastScanAt = Date.now(); // beri jeda sebentar sebelum Auto scan lagi
+  $("detail").hidden = true;
+  renderAll();
+}
+
 // ---------------- Card ----------------
 function chipsHtml(r, n = 3) {
   const out = [];
@@ -569,7 +585,8 @@ function renderCard() {
   if (isDesk()) { card.innerHTML = ""; card.hidden = true; return; } // PC: hasil tampil di panel samping
   let html = "";
   if (state.busy && !r) {
-    html = `<div class="loading"><img class="loading-pipit" src="/icons/pipit.svg" alt="" /><span class="dots">Pipit lagi membaca label</span></div>`;
+    // Pipit sendiri sudah muncul di layar kamera dengan kaca pembesar, jadi kartu cukup teks
+    html = `<div class="loading"><div class="spinner"></div><span class="dots">Membaca label</span></div>`;
   } else if (state.error && !r) {
     html = `<p class="error">${esc(state.error)}</p>`;
   } else if (!r) {
@@ -625,6 +642,8 @@ function renderCard() {
     }
   }
   if (state.error && r) html += `<p class="error" style="margin-top:10px">${esc(state.error)}</p>`;
+  // Tombol × di pojok kartu: tutup hasil dan kembali ke kamera untuk scan berikutnya
+  if ((r || state.error) && !state.busy) html = CLOSE_BTN("card-close") + html;
   card.innerHTML = html;
   card.hidden = false;
   $("camera").style.setProperty("--card-h", card.offsetHeight + 20 + "px");
@@ -665,6 +684,7 @@ function renderSidePanel() {
     h = `<div class="eyebrow" style="margin-bottom:12px">${state.busy ? "Membaca produk baru…" : esc(metaText())}</div>` + detailHtml(r);
     if (state.error) h += `<p class="error" style="margin-top:12px">${esc(state.error)}</p>`;
   }
+  if ((r || state.error) && !state.busy) h = CLOSE_BTN("panel-close") + h;
   el.innerHTML = h;
 }
 
@@ -1065,6 +1085,7 @@ document.addEventListener("click", (e) => {
     case "manualBtn": state.manualOpen = true; return renderCard();
     case "installBtn": return installApp();
     case "shareBtn": return shareResult();
+    case "clearBtn": return clearResult();
     case "curWarn":
       setCurrency("from", "auto");
       return toast(`Mata uang kembali otomatis: ${state.detectedCur}`);
@@ -1118,6 +1139,7 @@ window.addEventListener("resize", renderOverlay);
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   for (const id of ["detail", "currency", "settings"]) if (!$(id).hidden) return closeSheet(id);
+  if (!$("camera").hidden && (state.result || state.error)) clearResult();
 });
 
 // ---------------- Demo (tanpa API key / kamera) ----------------

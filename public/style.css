@@ -192,6 +192,27 @@ button { cursor: pointer; }
 .corners i:nth-child(4) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
 .sticker.floating { position: absolute; width: 214px; animation: pop .28s cubic-bezier(.2,.9,.3,1.3); transition: left .25s ease, top .25s ease; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+/* Tombol × untuk menutup hasil dan scan lagi */
+.card-close, .panel-close { width: 40px; height: 40px; border-radius: 20px; border: 0; display: grid; place-items: center;
+  background: var(--sheet); color: var(--ink); box-shadow: var(--outline), 0 4px 14px rgba(0,0,0,.18); z-index: 2; }
+.card-close { position: absolute; top: -16px; right: 14px; }
+.panel-close { position: sticky; top: 0; float: right; margin: -6px -6px 0 8px; background: var(--soft); box-shadow: var(--outline); }
+
+/* Pipit ikut scan: muncul di pojok kamera dengan kaca pembesar selama AI membaca */
+.scan-buddy { position: absolute; left: 14px; bottom: calc(env(safe-area-inset-bottom) + var(--card-h, 0px) + 128px); z-index: 2;
+  display: flex; align-items: flex-end; gap: 6px; pointer-events: none; opacity: 0; transform: translateY(12px) scale(.9);
+  transition: opacity .2s, transform .25s cubic-bezier(.2,.9,.3,1.3); }
+body.scanning .scan-buddy { opacity: 1; transform: none; }
+.scan-buddy svg { width: 76px; height: auto; }
+.buddy-bubble { margin-bottom: 46px; padding: 7px 11px; border-radius: 14px 14px 14px 4px; background: var(--sheet); color: var(--ink);
+  font-size: 13px; font-weight: 700; box-shadow: var(--outline), var(--lift); white-space: nowrap; }
+body.scanning .scan-buddy .pip-body { animation: pipbob 1.2s ease-in-out infinite; }
+body.scanning .scan-buddy .pip-mag { animation: pipmag 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: 30% 30%; }
+@keyframes pipbob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes pipmag { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 50% { transform: translate(-7px, -4px) rotate(-8deg); } }
+[data-layout="desktop"] .scan-buddy { bottom: 16px; left: 16px; }
+[data-layout="desktop"] .scan-buddy svg { width: 92px; }
+
 /* Garis scan: menyapu layar kamera selama AI membaca (warna solid, tanpa gradasi) */
 .scan-line { position: absolute; left: 0; right: 0; top: 10%; height: 3px; background: var(--accent); opacity: 0; pointer-events: none; z-index: 1;
   box-shadow: 0 0 10px var(--accent); transition: opacity .2s; }

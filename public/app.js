@@ -39,7 +39,27 @@ const state = {
   error: null,
   manualOpen: false,
   pick: "from",        // kartu mana yang aktif di halaman mata uang
+  mode: store.get("mode", "product"), // "product" = satu produk/label, "menu" = menu restoran
+  diet: store.get("diet", []),        // id profil makanan, lihat DIET_OPTIONS
+  lastImage: null,                    // foto terakhir yang di-scan, untuk kartu Bagikan
 };
+
+const DIET_OPTIONS = [
+  { id: "halal", label: "Halal", group: "diet" },
+  { id: "no-pork", label: "Tanpa babi", group: "diet" },
+  { id: "no-alcohol", label: "Tanpa alkohol", group: "diet" },
+  { id: "vegetarian", label: "Vegetarian", group: "diet" },
+  { id: "vegan", label: "Vegan", group: "diet" },
+  { id: "peanut", label: "Kacang", ai: "Alergi kacang", group: "allergy" },
+  { id: "shellfish", label: "Udang & kerang", ai: "Alergi udang & kerang", group: "allergy" },
+  { id: "fish", label: "Ikan", ai: "Alergi ikan", group: "allergy" },
+  { id: "milk", label: "Susu", ai: "Alergi susu", group: "allergy" },
+  { id: "egg", label: "Telur", ai: "Alergi telur", group: "allergy" },
+  { id: "wheat", label: "Gandum / gluten", ai: "Alergi gandum/gluten", group: "allergy" },
+  { id: "soy", label: "Kedelai", ai: "Alergi kedelai", group: "allergy" },
+  { id: "sesame", label: "Wijen", ai: "Alergi wijen", group: "allergy" },
+];
+const dietForAI = () => DIET_OPTIONS.filter((o) => state.diet.includes(o.id)).map((o) => o.ai || o.label);
 
 // ---------------- Layout: phone / tablet / desktop ----------------
 // PC = layar lebar + mouse → tampilan web dengan webcam (kamera depan saja).
@@ -252,18 +272,24 @@ async function scan(image) {
       const r = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image, language: state.lang, sourceCurrency: state.from, camera: source === "front" ? "front" : "back" }),
+        body: JSON.stringify({
+          image, language: state.lang, sourceCurrency: state.from,
+          camera: source === "front" ? "front" : "back",
+          mode: state.mode, diet: dietForAI(),
+        }),
       });
       data = await r.json();
       if (!r.ok) throw new Error(data.error);
     }
     state.result = data;
+    state.lastImage = image || null;
     state.resultMeta = { at: new Date(), source, mirror: source === "front" };
     state.resultFresh = true;
     state.manualOpen = false;
     const p = mainPrice(data);
-    if (p && state.from === "auto" && p.currency) {
-      const cur = p.currency.toUpperCase();
+    const detected = data.kind === "menu" ? data.currency : p?.currency;
+    if (detected && state.from === "auto") {
+      const cur = detected.toUpperCase();
       if (cur !== state.lastCurrency) { state.lastCurrency = cur; store.set("lastCurrency", cur); loadTrend(); }
     }
   } catch (e) {
@@ -346,7 +372,10 @@ function renderOverlay() {
   const st = $("sticker"), corners = $("corners"), tag = $("productTag");
   const r = state.result;
   st.hidden = corners.hidden = tag.hidden = true;
-  if (!r || !state.resultFresh || r.subject === "none") return;
+  if (!r || !state.resultFresh || r.subject === "none" || r.kind === "menu") return;
+  const warn = state.diet.length > 0 && r.diet_check?.status === "tidak_cocok";
+  st.classList.toggle("warn", warn);
+  st.querySelector(".st-hint").textContent = warn ? "tidak cocok untukmu" : "ketuk untuk detail";
 
   const p = mainPrice(r);
   const boxSrc = p && r.price_box?.found ? r.price_box : r.product_box?.found ? r.product_box : null;
@@ -379,6 +408,70 @@ function renderOverlay() {
   }
 }
 
+// ---------------- Profil makanan: tanda cocok / tidak ----------------
+const DIET_ICON = {
+  cocok: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5l3 3 6-7"/></svg>',
+  tidak_cocok: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg>',
+  tidak_pasti: '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="7" cy="7" r="5.5"/><path d="M7 4v3.5M7 10h.01"/></svg>',
+};
+const DIET_TEXT = { cocok: "Cocok untukmu", tidak_cocok: "Tidak cocok", tidak_pasti: "Belum pasti" };
+const DIET_CLASS = { cocok: "diet-ok", tidak_cocok: "diet-bad", tidak_pasti: "diet-unsure" };
+
+function dietBadge(status, reason) {
+  if (!state.diet.length || !DIET_CLASS[status]) return "";
+  const label = reason && status !== "cocok" ? `${DIET_TEXT[status]}: ${reason}` : DIET_TEXT[status];
+  return `<span class="diet-badge ${DIET_CLASS[status]}">${DIET_ICON[status]}<span>${esc(label)}</span></span>`;
+}
+function dietBanner(check) {
+  if (!state.diet.length || !check || !DIET_CLASS[check.status]) return "";
+  const reasons = (check.reasons || []).filter(Boolean);
+  return `<div class="diet-banner ${DIET_CLASS[check.status]}">
+    <b>${DIET_ICON[check.status]}${DIET_TEXT[check.status]} dengan profilmu</b>
+    ${reasons.length ? `<ul>${reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+  </div>`;
+}
+
+// ---------------- Mode menu restoran ----------------
+function menuPriceHtml(price, cur) {
+  if (price == null || !cur) return `<b>—</b>`;
+  const v = convert(price, cur, state.to);
+  return `<b>${v != null ? fmt(v, state.to) : "?"}</b><small>${fmt(price, cur)}</small>`;
+}
+function menuCur(r) { return state.from === "auto" ? (r.currency || "").toUpperCase() : state.from; }
+
+function menuHtml(r) {
+  const items = r.items || [];
+  if (!r.found || !items.length) {
+    return `<h1 class="detail-title" style="margin-top:0">Belum ada menu terbaca</h1>
+      <p class="fine" style="margin:6px 0 0">Foto menu lebih dekat dan pastikan tulisannya tidak buram.</p>`;
+  }
+  const cur = menuCur(r), one = cur ? convert(1, cur, state.to) : null;
+  const bad = items.filter((i) => i.diet_status === "tidak_cocok").length;
+  let h = `<div class="menu-head"><h1 class="detail-title" style="margin-top:0">Menu · ${items.length} item</h1></div>
+    <div class="detail-orig">${one != null ? `1 ${esc(cur)} = ${fmtRate(one, state.to)}` : esc(cur)}${state.diet.length ? ` · ${bad} tidak cocok untukmu` : ""}</div>
+    <div class="menu-list">`;
+  for (const it of items) {
+    h += `<div class="menu-item">
+      <div><b>${esc(it.name_translated || it.name_original)}</b><div class="orig jp">${esc(it.name_original)}</div></div>
+      <div class="price">${menuPriceHtml(it.price, cur)}</div>
+      ${it.description ? `<p class="desc">${esc(it.description)}</p>` : ""}
+      ${(it.tags?.length || state.diet.length) ? `<div class="tags">${dietBadge(it.diet_status, it.diet_reason)}${(it.tags || []).map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+    </div>`;
+  }
+  h += `</div>`;
+  if (r.notes) h += `<div class="note">${esc(r.notes)}</div>`;
+  h += `<p class="fine" style="margin:12px 0 0">Dibaca AI dari foto. Tanyakan ke pelayan kalau kamu punya alergi.</p>` + actionsHtml();
+  return h;
+}
+
+function actionsHtml() {
+  return `<div class="actions">
+      <button class="btn btn-line" id="saveBtn">Simpan</button>
+      <button class="btn btn-line" id="shareBtn">Bagikan</button>
+      <button class="btn btn-primary wide" data-close="detail" data-rescan>Scan lagi</button>
+    </div>`;
+}
+
 // ---------------- Card ----------------
 function chipsHtml(r, n = 3) {
   const out = [];
@@ -400,6 +493,24 @@ function renderCard() {
     card.hidden = true;
     $("camera").style.setProperty("--card-h", "0px");
     return;
+  } else if (r.kind === "menu") {
+    const items = r.items || [];
+    const bad = items.filter((i) => i.diet_status === "tidak_cocok").length;
+    html = items.length && r.found
+      ? `<div class="card-row ${state.resultFresh ? "" : "stale"}">
+          <div style="flex:1;min-width:0">
+            <div class="eyebrow">${state.busy ? "Membaca menu…" : "Menu terbaca"}</div>
+            <div class="card-title">${items.length} item menu</div>
+            <div class="card-sub">${esc(items.slice(0, 3).map((i) => i.name_translated || i.name_original).join(", "))}${items.length > 3 ? ", …" : ""}</div>
+            ${state.diet.length ? `<div class="chips">${bad ? `<span class="diet-bad">${bad} tidak cocok</span>` : `<span class="diet-ok">Tidak ada yang melanggar profil</span>`}</div>` : ""}
+          </div>
+          <button class="round-go" data-open="detail" aria-label="Lihat semua menu">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg>
+          </button>
+        </div>`
+      : `<div class="eyebrow">${state.busy ? "Membaca…" : "Belum terbaca"}</div>
+        <div class="card-title">Belum ada menu terbaca</div>
+        <div class="card-sub">Foto menu lebih dekat dan pastikan tulisannya jelas.</div>`;
   } else if (r.subject === "none") {
     html = `<div class="eyebrow">${state.busy ? "Membaca…" : "Belum terbaca"}</div>
       <div class="card-title">Belum ada produk terlihat</div>
@@ -412,6 +523,7 @@ function renderCard() {
           <div class="eyebrow">${eyebrow}</div>
           <div class="card-title">${esc(r.product_name_translated || r.product_name_original)}</div>
           ${p ? "" : `<div class="card-sub jp">${esc(r.product_name_original)}</div>`}
+          ${dietBadge(r.diet_check?.status, r.diet_check?.reasons?.[0])}
           <div class="chips">${chipsHtml(r)}</div>
         </div>
         <button class="round-go" data-open="detail" aria-label="Lihat detail">
@@ -454,7 +566,7 @@ function metaText() {
 function renderSidePanel() {
   const el = $("sidePanel"), r = state.result;
   let h = "";
-  if (!r || r.subject === "none") {
+  if (!r || (r.subject === "none" && r.kind !== "menu")) {
     h = `<div class="panel-empty"><img class="panel-pipit" src="/icons/pipit.svg" alt="" />
       ${state.busy ? `<div class="loading"><div class="spinner"></div>AI sedang membaca…</div>` : `<div class="eyebrow">${r ? "Belum terbaca" : "Siap scan"}</div>`}
       <h2>${r ? "Belum ada produk terlihat" : "Pegang produk di depan webcam"}</h2>
@@ -474,6 +586,7 @@ function renderSidePanel() {
 }
 
 function detailHtml(r) {
+  if (r.kind === "menu") return menuHtml(r);
   const p = mainPrice(r);
   let h = "";
   if (p) {
@@ -491,7 +604,7 @@ function detailHtml(r) {
     }
   }
   h += `<h1 class="detail-title" style="${p ? "" : "margin-top:0"}">${esc(r.product_name_translated || "Produk")}</h1>
-        <div class="detail-orig jp">${esc(r.product_name_original)}</div>`;
+        <div class="detail-orig jp">${esc(r.product_name_original)}</div>` + dietBanner(r.diet_check);
   if (!p && isDesk()) {
     const cur = esc(effFrom() || "JPY");
     h += `<div class="panel-manual"><p>Harga tidak terlihat. Dekatkan label harga ke webcam, atau isi sendiri.</p>
@@ -527,11 +640,7 @@ function detailHtml(r) {
     h += `<div class="h2">Alergen</div><div class="big-chips">${r.allergens.map((a) => `<span>${esc(a)}</span>`).join("")}</div>`;
   }
   if (r.notes) h += `<div class="note">${esc(r.notes)}</div>`;
-  h += `<p class="fine" style="margin:12px 0 0">Dibaca AI dari foto. Cek ulang label kalau kamu punya alergi.</p>
-    <div class="actions">
-      <button class="btn btn-line" id="saveBtn">Simpan</button>
-      <button class="btn btn-primary" data-close="detail" data-rescan>Scan lagi</button>
-    </div>`;
+  h += `<p class="fine" style="margin:12px 0 0">Dibaca AI dari foto. Cek ulang label kalau kamu punya alergi.</p>` + actionsHtml();
   return h;
 }
 
@@ -631,6 +740,140 @@ function renderSaved() {
     : `<p class="empty">Belum ada. Tekan "Simpan" di halaman detail produk.</p>`;
 }
 
+function renderDiet() {
+  const btn = (o) => `<button data-diet="${o.id}" aria-pressed="${state.diet.includes(o.id)}">${esc(o.label)}</button>`;
+  $("dietDiet").innerHTML = DIET_OPTIONS.filter((o) => o.group === "diet").map(btn).join("");
+  $("dietAllergy").innerHTML = DIET_OPTIONS.filter((o) => o.group === "allergy").map(btn).join("");
+}
+
+function renderMode() {
+  for (const b of document.querySelectorAll("[data-mode]")) b.setAttribute("aria-pressed", b.dataset.mode === state.mode);
+}
+
+// ---------------- Bagikan (WhatsApp, dll) ----------------
+function loadImg(src) {
+  return new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = src; });
+}
+function wrapLines(ctx, text, maxW, maxLines) {
+  const words = String(text).split(/\s+/), lines = [];
+  let line = "";
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t;
+  }
+  if (line) lines.push(line);
+  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, "") + "…"; }
+  return lines;
+}
+
+// Kartu gambar 1080×1350 (pas untuk WhatsApp/Instagram): foto, nama, harga rupiah, harga asli.
+async function makeShareImage(r) {
+  await document.fonts.ready;
+  const css = getComputedStyle(document.documentElement);
+  const v = (n) => css.getPropertyValue(n).trim();
+  const font = getComputedStyle(document.body).fontFamily;
+  const W = 1080, H = 1350, pad = 56;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.fillStyle = v("--sheet"); x.fillRect(0, 0, W, H);
+
+  // foto produk
+  const ph = 600;
+  x.save();
+  x.beginPath(); x.roundRect(pad, pad, W - pad * 2, ph, 40); x.clip();
+  x.fillStyle = v("--soft"); x.fillRect(pad, pad, W - pad * 2, ph);
+  try {
+    const img = await loadImg(state.lastImage || "/icons/pipit.svg");
+    if (state.lastImage) {
+      const s = Math.max((W - pad * 2) / img.width, ph / img.height);
+      const w = img.width * s, h = img.height * s;
+      x.drawImage(img, pad + (W - pad * 2 - w) / 2, pad + (ph - h) / 2, w, h);
+    } else {
+      x.drawImage(img, W / 2 - 150, pad + ph / 2 - 166, 300, 332);
+    }
+  } catch {}
+  x.restore();
+
+  // harga
+  const p = mainPrice(r);
+  let y = pad + ph + 40;
+  if (p) {
+    const cur = priceCur(p), conv = convert(p.amount, cur, state.to);
+    x.fillStyle = v("--hero");
+    x.beginPath(); x.roundRect(pad, y, W - pad * 2, 252, 36); x.fill();
+    x.fillStyle = v("--hero-ink");
+    x.font = `700 30px ${font}`; x.globalAlpha = 0.8;
+    x.fillText(`HARGA DALAM ${state.to}`, pad + 40, y + 62);
+    x.globalAlpha = 1; x.font = `800 112px ${font}`;
+    x.fillText(conv != null ? fmt(conv, state.to) : "—", pad + 36, y + 170);
+    x.font = `600 34px ${font}`; x.globalAlpha = 0.85;
+    x.fillText(`${fmt(p.amount, cur)}${p.label ? " · " + p.label.toLowerCase() : ""}`, pad + 40, y + 222);
+    x.globalAlpha = 1;
+    y += 252 + 56;
+  }
+  // nama produk
+  x.fillStyle = v("--ink"); x.font = `800 52px ${font}`;
+  for (const line of wrapLines(x, r.product_name_translated || r.product_name_original || "Produk", W - pad * 2, 2)) {
+    x.fillText(line, pad, y + 10); y += 62;
+  }
+  x.fillStyle = v("--muted"); x.font = `500 32px 'IBM Plex Sans JP', ${font}`;
+  for (const line of wrapLines(x, r.product_name_original || "", W - pad * 2, 1)) { x.fillText(line, pad, y + 8); y += 44; }
+
+  // kaki: logo + tanggal
+  try { x.drawImage(await loadImg("/icons/icon.svg"), pad, H - pad - 72, 72, 72); } catch {}
+  x.fillStyle = v("--ink"); x.font = `800 36px ${font}`;
+  x.fillText("KursLens", pad + 92, H - pad - 30);
+  x.fillStyle = v("--muted"); x.font = `500 26px ${font}`;
+  x.fillText(`kurs ${new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}`, pad + 92, H - pad + 2);
+
+  return new Promise((ok) => c.toBlob(ok, "image/png"));
+}
+
+function shareText(r) {
+  if (r.kind === "menu") {
+    const cur = menuCur(r);
+    const lines = (r.items || []).slice(0, 25).map((it) => {
+      const v = it.price != null && cur ? convert(it.price, cur, state.to) : null;
+      const price = v != null ? `${fmt(v, state.to)} (${fmt(it.price, cur)})` : "harga tidak tertulis";
+      const warn = state.diet.length && it.diet_status === "tidak_cocok" ? " [tidak cocok]" : "";
+      return `• ${it.name_translated || it.name_original}: ${price}${warn}`;
+    });
+    return `Menu (${(r.items || []).length} item), dicek pakai KursLens:\n${lines.join("\n")}`;
+  }
+  const p = mainPrice(r);
+  let t = r.product_name_translated || r.product_name_original || "Produk";
+  if (p) {
+    const cur = priceCur(p), v = convert(p.amount, cur, state.to);
+    t += `: ${v != null ? fmt(v, state.to) : "?"} (${fmt(p.amount, cur)})`;
+  }
+  return t + ". Dicek pakai KursLens.";
+}
+
+// HP: menu "Bagikan" bawaan (WhatsApp, Telegram, dll) dengan gambar kartu.
+// Laptop tanpa menu itu: gambar diunduh, lalu WhatsApp Web dibuka dengan teksnya.
+async function shareResult() {
+  const r = state.result;
+  if (!r) return;
+  const text = shareText(r);
+  let blob = null;
+  if (r.kind !== "menu") blob = await makeShareImage(r).catch(() => null);
+  try {
+    const file = blob && new File([blob], "kurslens.png", { type: "image/png" });
+    if (file && navigator.canShare?.({ files: [file] })) return await navigator.share({ files: [file], text });
+    if (navigator.share) return await navigator.share({ text });
+  } catch (e) {
+    if (e?.name === "AbortError") return; // pengguna menutup menu bagikan
+  }
+  if (blob) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "kurslens.png"; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank", "noopener");
+  toast(blob ? "Gambar diunduh, WhatsApp dibuka" : "WhatsApp dibuka");
+}
+
 // ---------------- Navigation ----------------
 function show(id) {
   for (const v of ["welcome", "how", "camera"]) $(v).hidden = v !== id;
@@ -643,7 +886,7 @@ function openSheet(id) {
   if (id === "detail" && isDesk()) { $("sidePanel").scrollTo({ top: 0, behavior: "smooth" }); return; }
   $(id).hidden = false;
   if (id === "currency") { state.pick = "from"; $("curSearch").value = ""; renderCurrencyPage(); renderTrendBox(); }
-  if (id === "settings") { renderThemeGrid(); renderSaved(); }
+  if (id === "settings") { renderThemeGrid(); renderDiet(); renderSaved(); }
   if (id === "detail") renderDetail();
 }
 function closeSheet(id) { $(id).hidden = true; }
@@ -677,6 +920,22 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (el.dataset.pickTheme) return applyTheme(el.dataset.pickTheme);
+  if (el.dataset.diet) {
+    const id = el.dataset.diet;
+    state.diet = state.diet.includes(id) ? state.diet.filter((d) => d !== id) : [...state.diet, id];
+    store.set("diet", state.diet);
+    el.setAttribute("aria-pressed", state.diet.includes(id));
+    return renderAll();
+  }
+  if (el.dataset.mode) {
+    if (state.mode === el.dataset.mode) return;
+    state.mode = el.dataset.mode;
+    store.set("mode", state.mode);
+    renderMode();
+    state.result = null; state.resultFresh = false; scanThumb = null;
+    renderAll();
+    return toast(state.mode === "menu" ? "Mode menu: foto seluruh menu restoran" : "Mode produk: arahkan ke label harga atau produk");
+  }
   if (el.dataset.cur) {
     setCurrency(state.pick, el.dataset.cur);
     if (state.pick === "from") { state.pick = "to"; renderCurrencyPage(); }
@@ -713,9 +972,11 @@ document.addEventListener("click", (e) => {
     }
     case "manualBtn": state.manualOpen = true; return renderCard();
     case "installBtn": return installApp();
+    case "shareBtn": return shareResult();
     case "saveBtn": {
       const r = state.result, p = mainPrice(r);
-      const item = { name: r.product_name_translated || r.product_name_original, when: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short" }), orig: "", conv: "" };
+      const name = r.kind === "menu" ? `Menu (${(r.items || []).length} item)` : r.product_name_translated || r.product_name_original;
+      const item = { name, when: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short" }), orig: "", conv: "" };
       if (p) {
         const cur = priceCur(p), v = convert(p.amount, cur, state.to);
         item.orig = fmt(p.amount, cur);
@@ -781,7 +1042,33 @@ function addDemoScene() {
 function removeDemoScene() { $("demoScene")?.remove(); }
 
 let demoTurn = 0;
+// Penilaian profil versi demo (di aplikasi asli, AI yang menilai dari komposisi)
+function demoDiet(contains, halalKnown) {
+  if (!state.diet.length) return { status: "tidak_pasti", reasons: [] };
+  const hit = DIET_OPTIONS.filter((o) => state.diet.includes(o.id) && contains[o.id]).map((o) => contains[o.id]);
+  if (hit.length) return { status: "tidak_cocok", reasons: hit };
+  if (state.diet.includes("halal") && !halalKnown) return { status: "tidak_pasti", reasons: ["Tidak ada logo halal di kemasan"] };
+  return { status: "cocok", reasons: [] };
+}
 function demoResult(source) {
+  if (state.mode === "menu") {
+    const item = (o, t, d, price, tags, contains) => {
+      const c = demoDiet(contains, false);
+      return { name_original: o, name_translated: t, description: d, price, tags, diet_status: c.status, diet_reason: c.reasons[0] || "" };
+    };
+    return {
+      kind: "menu", found: true, currency: "JPY",
+      items: [
+        item("豚骨ラーメン", "Ramen tonkotsu", "Kuah kaldu tulang babi, irisan chashu", 980, ["babi"], { "no-pork": "Kuah dan daging babi", halal: "Mengandung babi", wheat: "Mi gandum" }),
+        item("醤油ラーメン", "Ramen shoyu", "Kuah kecap asin, telur, nori", 880, ["ayam"], { egg: "Ada telur rebus", soy: "Kecap kedelai", wheat: "Mi gandum" }),
+        item("海老天丼", "Nasi tempura udang", "Udang goreng tepung di atas nasi", 1200, ["seafood"], { shellfish: "Udang", wheat: "Tepung gandum", egg: "Adonan pakai telur" }),
+        item("野菜カレー", "Kari sayur", "Kari Jepang dengan sayuran", 850, ["vegetarian"], { wheat: "Roux kari dari gandum", milk: "Roux kari biasanya pakai susu" }),
+        item("生ビール", "Bir draft", "", 600, ["alkohol"], { "no-alcohol": "Minuman beralkohol", halal: "Minuman beralkohol" }),
+        item("緑茶", "Teh hijau", "Gratis isi ulang", null, [], {}),
+      ],
+      notes: "Harga sudah termasuk pajak. Ada biaya meja ¥300 per orang setelah jam 18.00.",
+    };
+  }
   const cam = $("stage").getBoundingClientRect();
   const tagEl = $("demoTag");
   const tb = tagEl?.getBoundingClientRect();
@@ -794,6 +1081,7 @@ function demoResult(source) {
       text_translation: [{ original: "無糖", translated: "Tanpa gula" }, { original: "カフェイン含有", translated: "Mengandung kafein" }],
       nutrition: { calories_kcal: 0, protein_g: 0, fat_g: 0, carbs_g: 0, sugar_g: 0, salt_g: 0.07, serving: "per 100 ml", source: "label" },
       allergens: [], notes: "Mengandung kafein. Tidak ada bahan dari babi atau alkohol di komposisi.",
+      diet_check: demoDiet({}, true), kind: "product",
     };
   }
   return {
@@ -809,6 +1097,7 @@ function demoResult(source) {
     ],
     nutrition: { calories_kcal: 232, protein_g: 5.2, fat_g: 8.9, carbs_g: 32.6, sugar_g: null, salt_g: 1.1, serving: "per 1 buah", source: "label" },
     allergens: ["Telur", "Kedelai", "Ikan (tuna)"],
+    diet_check: demoDiet({ egg: "Mayones mengandung telur", soy: "Mengandung kedelai", fish: "Isi tuna" }, false), kind: "product",
     notes: "Tidak tertulis babi atau alkohol di komposisi. Tidak ada logo sertifikat halal di kemasan.",
   };
 }
@@ -853,6 +1142,7 @@ if ("serviceWorker" in navigator && !DEMO) {
 
 // ---------------- Start ----------------
 renderInstall();
+renderMode();
 applyLayout();
 applyTheme();
 $("autoBtn").setAttribute("aria-pressed", state.auto);

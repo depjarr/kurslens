@@ -336,6 +336,49 @@ body.scanning .shutter span { background: var(--accent); }
 .saved-item small { color: var(--muted); font-size: 12px; }
 .saved-item .p { font-weight: 800; font-size: 14px; }
 .empty { color: var(--muted); font-size: 14px; padding: 16px 0; margin: 0; }
+/* ---- Mode Produk / Menu ---- */
+.mode-switch { display: inline-flex; padding: 3px; border-radius: 15px; height: 30px; }
+.mode-switch button { border: 0; background: transparent; color: inherit; height: 24px; padding: 0 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+.mode-switch button[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+
+/* ---- Profil makanan ---- */
+.diet-box { padding: 14px 16px 16px; }
+.diet-help { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.diet-sub { font-size: 12px; font-weight: 700; color: var(--muted); margin: 12px 0 8px; }
+.diet-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.diet-grid button { min-height: 38px; padding: 0 14px; border-radius: 19px; border: 1px solid var(--line); background: var(--sheet); color: var(--ink); font-size: 14px; font-weight: 600; }
+.diet-grid button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--primary-ink); }
+.diet-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; margin-top: 8px; max-width: 100%; }
+.diet-badge svg { flex: 0 0 auto; }
+.diet-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diet-ok { background: color-mix(in srgb, var(--up) 14%, var(--sheet)); color: var(--up); }
+.diet-bad { background: color-mix(in srgb, var(--down) 14%, var(--sheet)); color: var(--down); }
+.diet-unsure { background: color-mix(in srgb, #F59E0B 16%, var(--sheet)); color: #B45309; }
+[data-theme="indigo-gelap"] .diet-unsure { color: #FBBF24; }
+.diet-banner { margin-top: 14px; padding: 14px 16px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
+.diet-banner b { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.diet-banner ul { margin: 6px 0 0; padding-left: 20px; color: var(--ink); }
+.chips span.diet-ok { background: color-mix(in srgb, var(--up) 14%, var(--sheet)); color: var(--up); }
+.chips span.diet-bad { background: color-mix(in srgb, var(--down) 14%, var(--sheet)); color: var(--down); }
+.sticker.warn { box-shadow: 0 0 0 3px var(--down), var(--lift); }
+
+/* ---- Daftar menu ---- */
+.menu-list { display: flex; flex-direction: column; margin-top: 8px; }
+.menu-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.menu-item:last-child { border-bottom: 0; }
+.menu-item b { font-size: 15px; }
+.menu-item .orig { font-size: 12px; color: var(--muted); }
+.menu-item .desc { grid-column: 1 / -1; font-size: 13px; color: var(--muted); margin: 0; }
+.menu-item .price { text-align: right; }
+.menu-item .price b { display: block; font-size: 15px; }
+.menu-item .price small { font-size: 12px; color: var(--muted); }
+.menu-item .tags { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.menu-item .tags span { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 10px; background: var(--soft); }
+.menu-item .diet-badge { margin-top: 0; }
+.menu-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.menu-head h1 { margin: 0; }
+.actions .wide { grid-column: 1 / -1; }
+
 .install-box { padding: 14px 16px; }
 .install-row { display: flex; align-items: center; gap: 12px; }
 .install-row img { border-radius: 11px; flex: 0 0 auto; }

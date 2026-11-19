@@ -85,10 +85,26 @@ const BOX = {
   properties: { found: { type: "boolean" }, x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" } },
 };
 
+// Penilaian terhadap profil makanan pengguna (halal, alergi, dll)
+const DIET_STATUS = {
+  type: "string",
+  enum: ["cocok", "tidak_cocok", "tidak_pasti"],
+  description: "cocok = aman untuk profil pengguna; tidak_cocok = melanggar profil; tidak_pasti = info kurang/profil kosong",
+};
+const DIET_CHECK = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "reasons"],
+  properties: {
+    status: DIET_STATUS,
+    reasons: { type: "array", description: "alasan singkat, mis. 'Mengandung babi (ポーク)'", items: { type: "string" } },
+  },
+};
+
 const SCAN_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["subject", "product_name_original", "product_name_translated", "prices", "price_box", "product_box", "text_translation", "nutrition", "allergens", "notes"],
+  required: ["subject", "product_name_original", "product_name_translated", "prices", "price_box", "product_box", "text_translation", "nutrition", "allergens", "diet_check", "notes"],
   properties: {
     subject: {
       type: "string",
@@ -139,7 +155,38 @@ const SCAN_SCHEMA = {
       },
     },
     allergens: { type: "array", items: { type: "string" } },
+    diet_check: DIET_CHECK,
     notes: { type: "string", description: "info singkat: babi/alkohol/halal, kafein, dll. Kosong jika tidak ada" },
+  },
+};
+
+// Mode menu restoran: satu foto → banyak item
+const MENU_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["found", "currency", "items", "notes"],
+  properties: {
+    found: { type: "boolean", description: "true jika ada menu/daftar harga yang terbaca" },
+    currency: { type: "string", description: "kode ISO 4217 untuk harga di menu, mis. JPY" },
+    items: {
+      type: "array",
+      description: "semua item menu yang terbaca, urut seperti di menu (maks 40)",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name_original", "name_translated", "description", "price", "tags", "diet_status", "diet_reason"],
+        properties: {
+          name_original: { type: "string" },
+          name_translated: { type: "string" },
+          description: { type: "string", description: "isi/bahan singkat dalam bahasa terjemahan, boleh kosong" },
+          price: nullableNum,
+          tags: { type: "array", description: "mis. pedas, babi, sapi, ayam, seafood, alkohol, vegetarian", items: { type: "string" } },
+          diet_status: DIET_STATUS,
+          diet_reason: { type: "string" },
+        },
+      },
+    },
+    notes: { type: "string", description: "info umum menu: pajak/servis, minimal order, dll. Kosong jika tidak ada" },
   },
 };
 
@@ -172,11 +219,26 @@ function fromBox2d(b) {
   return { found: true, x: xmin, y: ymin, w: xmax - xmin, h: ymax - ymin };
 }
 
-function buildPrompt({ language, sourceCurrency, camera }) {
+function buildPrompt({ language, sourceCurrency, camera, mode, diet }) {
   const currencyHint =
     sourceCurrency === "auto"
       ? "Tentukan mata uang dari konteks (simbol, bahasa, toko). ¥/円 = JPY, ₩/원 = KRW, ฿ = THB, ₽/руб = RUB, RM = MYR, S$ = SGD."
       : `Anggap semua harga dalam ${sourceCurrency} kecuali jelas tertulis lain.`;
+  const dietHint = diet.length
+    ? `Profil makanan pengguna: ${diet.join(", ")}. Nilai kecocokan berdasarkan bahan/komposisi yang terbaca dan pengetahuan umum tentang produk/hidangan itu. ` +
+      "Jika ada bahan yang melanggar profil → tidak_cocok, sebutkan bahannya. Jika aman → cocok. " +
+      "Untuk 'Halal': hanya 'cocok' bila ada logo/tulisan halal atau jelas tanpa babi, alkohol, dan daging tak jelas; selain itu tidak_pasti. Jangan menebak terlalu yakin."
+    : "Profil makanan pengguna kosong: status 'tidak_pasti' dan alasan kosong.";
+
+  if (mode === "menu") {
+    const system =
+      "Kamu asisten wisatawan yang membaca menu restoran/kafe/warung dari foto. Tulisan bisa dalam bahasa apa pun; baca dengan teliti. " +
+      `Daftarkan setiap hidangan/minuman beserta harganya (price=null jika tidak tertulis), terjemahkan nama dan jelaskan isinya singkat dalam ${language}. ` +
+      "Beri tag yang membantu (pedas, babi, sapi, ayam, seafood, alkohol, vegetarian, dll). " +
+      dietHint +
+      " Jangan mengarang item atau harga yang tidak ada di foto. Jawab ringkas.";
+    return { system, user: `Foto menu. ${currencyHint}` };
+  }
   const cameraHint =
     camera === "front"
       ? "Foto dari kamera depan/webcam: pengguna biasanya memegang produk ke arah kamera, jadi fokus ke produk yang dipegang, abaikan wajah/orang."
@@ -188,17 +250,19 @@ function buildPrompt({ language, sourceCurrency, camera }) {
     `Terjemahkan nama produk dan tulisan penting ke ${language}. ` +
     "Gizi: pakai angka dari label gizi jika terlihat (source='label'); jika tidak, perkirakan dari jenis produk (source='estimate'); jika tidak bisa, null dan source='none'. " +
     "Kotak price_box mengelilingi label harga utama, product_box mengelilingi produk; found=false jika tidak ada. " +
-    "Jangan mengarang harga: jika tidak terbaca, prices kosong. Jawab ringkas.";
+    "Jangan mengarang harga: jika tidak terbaca, prices kosong. " +
+    dietHint +
+    " Jawab ringkas.";
   return { system, user: `${cameraHint} ${currencyHint}` };
 }
 
-async function scanWithClaude({ mime, data, prompt }) {
+async function scanWithClaude({ mime, data, prompt, mode }) {
   const response = await client.beta.messages.create({
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: mode === "menu" ? 12000 : 4000,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    output_config: { effort: "low", format: { type: "json_schema", schema: SCAN_SCHEMA } },
+    output_config: { effort: "low", format: { type: "json_schema", schema: mode === "menu" ? MENU_SCHEMA : SCAN_SCHEMA } },
     system: prompt.system,
     messages: [
       {
@@ -211,12 +275,14 @@ async function scanWithClaude({ mime, data, prompt }) {
     ],
   });
   if (response.stop_reason === "refusal") throw Object.assign(new Error("AI menolak memproses gambar ini."), { status: 422 });
+  if (response.stop_reason === "max_tokens") throw new Error("Menu terlalu panjang. Foto sebagian menu saja.");
   const text = response.content.find((b) => b.type === "text")?.text;
   if (!text) throw new Error("Respons AI kosong");
   return JSON.parse(text);
 }
 
-async function scanWithGemini({ mime, data, prompt }) {
+async function scanWithGemini({ mime, data, prompt, mode }) {
+  const menu = mode === "menu";
   const response = await gemini.models.generateContent({
     model: MODEL,
     contents: [
@@ -226,16 +292,18 @@ async function scanWithGemini({ mime, data, prompt }) {
       },
     ],
     config: {
-      systemInstruction: prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
+      systemInstruction: menu ? prompt.system : prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
       responseMimeType: "application/json",
-      responseJsonSchema: GEMINI_SCHEMA,
+      responseJsonSchema: menu ? MENU_SCHEMA : GEMINI_SCHEMA,
     },
   });
   const text = response.text;
   if (!text) throw new Error("Gemini tidak memberi jawaban (mungkin gambar diblokir filter keamanan).");
   const out = JSON.parse(text);
-  out.price_box = fromBox2d(out.price_box);
-  out.product_box = fromBox2d(out.product_box);
+  if (!menu) {
+    out.price_box = fromBox2d(out.price_box);
+    out.product_box = fromBox2d(out.product_box);
+  }
   return out;
 }
 
@@ -251,13 +319,20 @@ app.post("/api/scan", async (req, res) => {
   if (PROVIDER !== "gemini" && PROVIDER !== "claude") return res.status(500).json({ error: `AI_PROVIDER "${PROVIDER}" tidak dikenal. Pakai gemini atau claude.` });
 
   const { image, language = "Bahasa Indonesia", sourceCurrency = "auto", camera = "back" } = req.body || {};
+  const mode = req.body?.mode === "menu" ? "menu" : "product";
+  // Profil makanan: daftar label pendek dari aplikasi, dibatasi supaya tidak bisa dipakai menyelipkan instruksi panjang
+  const diet = (Array.isArray(req.body?.diet) ? req.body.diet : [])
+    .filter((d) => typeof d === "string")
+    .map((d) => d.replace(/[^\p{L}\p{N} &/()-]/gu, "").trim().slice(0, 40))
+    .filter(Boolean)
+    .slice(0, 16);
   const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(image || "");
   if (!m) return res.status(400).json({ error: "Gambar tidak valid" });
 
-  const args = { mime: m[1], data: m[2], prompt: buildPrompt({ language, sourceCurrency, camera }) };
+  const args = { mime: m[1], data: m[2], mode, prompt: buildPrompt({ language, sourceCurrency, camera, mode, diet }) };
   try {
     const result = PROVIDER === "gemini" ? await scanWithGemini(args) : await scanWithClaude(args);
-    res.json(result);
+    res.json({ ...result, kind: mode });
   } catch (err) {
     console.error(err);
     const status = err.status === 422 ? 422 : err.status === 429 || err instanceof Anthropic.RateLimitError ? 429 : 500;

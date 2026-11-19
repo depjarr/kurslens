@@ -113,6 +113,10 @@
       </button>
     </header>
     <div class="cam-chips">
+      <div class="glass mode-switch" role="group" aria-label="Mode scan">
+        <button id="modeProduct" data-mode="product" aria-pressed="true">Produk</button>
+        <button id="modeMenu" data-mode="menu" aria-pressed="false">Menu</button>
+      </div>
       <span id="trendChip" class="glass chip" hidden></span>
       <span id="rateTime" class="glass chip muted-chip">Memuat kurs…</span>
       <button id="autoBtn" class="glass chip" aria-pressed="false"><span class="switch" aria-hidden="true"><span></span></span>Auto</button>
@@ -187,6 +191,14 @@
       </div>
       <h2 class="section-label">Tema</h2>
       <div id="themeGrid" class="theme-grid"></div>
+      <h2 class="section-label">Profil makanan</h2>
+      <div class="group diet-box">
+        <p class="diet-help">Pilih yang berlaku untukmu. Setiap hasil scan akan diberi tanda cocok atau tidak.</p>
+        <div class="diet-sub">Pola makan</div>
+        <div id="dietDiet" class="diet-grid"></div>
+        <div class="diet-sub">Alergi</div>
+        <div id="dietAllergy" class="diet-grid"></div>
+      </div>
       <h2 class="section-label">Lainnya</h2>
       <div class="group">
         <label class="group-row">

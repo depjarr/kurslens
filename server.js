@@ -306,24 +306,63 @@ async function scanWithClaude({ mime, data, prompt }) {
   return JSON.parse(text);
 }
 
-async function scanWithGemini({ mime, data, prompt }) {
-  const response = await gemini.models.generateContent({
-    model: MODEL,
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: prompt.user }, { inlineData: { mimeType: mime, data } }],
-      },
-    ],
-    config: {
-      systemInstruction: prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
-      responseMimeType: "application/json",
-      responseJsonSchema: GEMINI_SCHEMA,
-    },
-  });
+// Model cadangan kalau model utama sedang sibuk (sering terjadi di jatah gratis)
+const GEMINI_FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-3.1-flash-lite";
+// Membaca label tidak butuh "berpikir" panjang; level rendah membuat jawaban jauh lebih cepat.
+// Kalau model menolak pengaturan ini, otomatis dimatikan untuk permintaan berikutnya.
+let geminiThinking = (process.env.GEMINI_THINKING || "LOW").toUpperCase();
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const isBusy = (err) => [500, 502, 503, 504].includes(err?.status) || /overloaded|UNAVAILABLE|try again later/i.test(err?.message || "");
+
+async function geminiCall(model, { mime, data, prompt }) {
+  const config = {
+    systemInstruction: prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
+    responseMimeType: "application/json",
+    responseJsonSchema: GEMINI_SCHEMA,
+    maxOutputTokens: 8192,
+  };
+  if (geminiThinking !== "OFF") config.thinkingConfig = { thinkingLevel: geminiThinking };
+  try {
+    return await gemini.models.generateContent({
+      model,
+      contents: [{ role: "user", parts: [{ text: prompt.user }, { inlineData: { mimeType: mime, data } }] }],
+      config,
+    });
+  } catch (err) {
+    if (err?.status === 400 && /thinking/i.test(err.message || "") && config.thinkingConfig) {
+      console.warn(`[scan] ${model} tidak mendukung thinkingLevel=${geminiThinking}; dimatikan`);
+      geminiThinking = "OFF";
+      return geminiCall(model, { mime, data, prompt });
+    }
+    throw err;
+  }
+}
+
+async function scanWithGemini(args) {
+  let response;
+  try {
+    response = await geminiCall(MODEL, args);
+  } catch (err) {
+    if (!isBusy(err)) throw err;
+    // sibuk: coba sekali lagi sebentar kemudian, lalu pakai model cadangan
+    await sleep(700);
+    try {
+      response = await geminiCall(MODEL, args);
+    } catch (err2) {
+      if (!isBusy(err2) || !GEMINI_FALLBACK || GEMINI_FALLBACK === MODEL) throw err2;
+      console.warn(`[scan] ${MODEL} sibuk, pindah ke ${GEMINI_FALLBACK}`);
+      response = await geminiCall(GEMINI_FALLBACK, args);
+    }
+  }
   const text = response.text;
   if (!text) throw new Error("Gemini tidak memberi jawaban (mungkin gambar diblokir filter keamanan).");
-  const out = JSON.parse(text);
+  let out;
+  try {
+    out = JSON.parse(text);
+  } catch {
+    throw new Error("Jawaban AI terpotong. Coba scan lagi, atau foto lebih dekat.");
+  }
   out.price_box = fromBox2d(out.price_box);
   out.product_box = fromBox2d(out.product_box);
   out.shelf_tags = (out.shelf_tags || []).map((t) => ({ ...t, box: fromBox2d(t.box) }));
@@ -352,9 +391,12 @@ app.post("/api/scan", async (req, res) => {
   if (!m) return res.status(400).json({ error: "Gambar tidak valid" });
 
   const args = { mime: m[1], data: m[2], prompt: buildPrompt({ language, sourceCurrency, camera, diet }) };
+  const t0 = Date.now();
   try {
     const result = PROVIDER === "gemini" ? await scanWithGemini(args) : await scanWithClaude(args);
     const kind = result.kind === "menu" ? "menu" : "product";
+    // Catatan waktu di log server (Vercel → Logs) untuk melacak scan yang lambat
+    console.log(`[scan] ${PROVIDER}/${MODEL} ${Date.now() - t0}ms kind=${kind} foto=${Math.round(m[2].length * 0.75 / 1024)}KB`);
     res.json({ ...result, kind, found: kind === "menu" ? (result.items || []).length > 0 : result.subject !== "none" });
   } catch (err) {
     console.error(err);
@@ -366,8 +408,11 @@ app.post("/api/scan", async (req, res) => {
           : "Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi."
         : /API_KEY_INVALID|API key not valid/.test(err.message || "")
           ? "GEMINI_API_KEY tidak valid. Cek lagi key dari aistudio.google.com/apikey."
-          : readableError(err);
-    res.status(status).json({ error: msg });
+          : isBusy(err)
+            ? "Server AI sedang sibuk. Coba scan lagi beberapa detik lagi."
+            : readableError(err);
+    console.log(`[scan] GAGAL ${Date.now() - t0}ms status=${status}: ${msg}`);
+    res.status(isBusy(err) ? 503 : status).json({ error: msg });
   }
 });
 

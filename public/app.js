@@ -41,6 +41,9 @@ const state = {
   pick: "from",        // kartu mana yang aktif di halaman mata uang
   diet: store.get("diet", []),        // id profil makanan, lihat DIET_OPTIONS
   lastImage: null,                    // foto terakhir yang di-scan, untuk kartu Bagikan
+  lastScanAt: 0,                      // jeda minimum antar scan otomatis
+  autoPausedUntil: 0,                 // Auto berhenti sementara setelah batas pemakaian tercapai
+  detectedCur: null,
 };
 
 const DIET_OPTIONS = [
@@ -169,7 +172,8 @@ async function startCamera() {
   stream = null;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: state.facing }, width: { ideal: 2560 }, height: { ideal: 1440 } },
+      // 1920×1080 cukup tajam untuk label, tapi tidak membuat HP biasa patah-patah
+      video: { facingMode: { ideal: state.facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
       audio: false,
     });
     video.srcObject = stream;
@@ -190,9 +194,10 @@ async function startCamera() {
 function liveReady() { return !!stream && video.videoWidth > 0 && still.hidden; }
 
 const canvas = document.createElement("canvas");
-// Foto dikirim sampai 1920 px (sisi terpanjang) supaya label harga yang agak jauh masih terbaca
+// Foto dikirim sampai 1600 px (sisi terpanjang): label agak jauh masih terbaca,
+// tapi ukuran kiriman tetap kecil supaya cepat walau pakai data seluler di luar negeri
 function grab(source, w, h) {
-  const max = 1920, s = Math.min(1, max / Math.max(w, h));
+  const max = 1600, s = Math.min(1, max / Math.max(w, h));
   canvas.width = Math.round(w * s);
   canvas.height = Math.round(h * s);
   // gambar mentah (tidak dicerminkan) → teks kamera depan terbaca normal oleh AI
@@ -233,11 +238,15 @@ setInterval(() => {
     renderOverlay();
     renderCard();
   }
-  // Auto: scan begitu kamera diam di objek baru
-  if (state.auto && !state.busy && stableTicks >= 2 && (scanThumb === null || moved > 18)) {
+  // Auto: scan begitu kamera diam di objek baru, tapi tidak lebih sering dari AUTO_GAP
+  // (jatah gratis Gemini punya batas per menit) dan berhenti sebentar setelah batasnya tercapai
+  const now = Date.now();
+  if (state.auto && !state.busy && stableTicks >= 3 && (scanThumb === null || moved > 18)
+      && now - state.lastScanAt > AUTO_GAP && now > state.autoPausedUntil) {
     scan();
   }
 }, 400);
+const AUTO_GAP = 6000;
 
 // ---------------- Scan ----------------
 async function scan(image) {
@@ -261,8 +270,11 @@ async function scan(image) {
 
   state.busy = true;
   state.error = null;
+  state.lastScanAt = Date.now();
   document.body.classList.add("scanning");
   renderCard();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 40000); // jangan menunggu selamanya kalau sinyal jelek
   try {
     let data;
     if (DEMO) {
@@ -272,14 +284,20 @@ async function scan(image) {
       const r = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
         body: JSON.stringify({
           image, language: state.lang, sourceCurrency: state.from,
           camera: source === "front" ? "front" : "back",
           diet: dietForAI(), // AI sendiri yang menentukan: produk/label harga atau menu restoran
         }),
       });
-      data = await r.json();
-      if (!r.ok) throw new Error(data.error);
+      data = await r.json().catch(() => ({ error: `Server tidak merespons dengan benar (kode ${r.status}).` }));
+      if (r.status === 429) {
+        // batas jatah gratis: Auto istirahat 1 menit supaya tidak terus-terusan gagal
+        state.autoPausedUntil = Date.now() + 60000;
+        if (state.auto) toast("Batas pemakaian AI tercapai, Auto berhenti 1 menit");
+      }
+      if (!r.ok) throw new Error(data.error || `Gagal (kode ${r.status})`);
     }
     state.result = data;
     state.lastImage = image || null;
@@ -294,8 +312,13 @@ async function scan(image) {
       if (cur !== state.lastCurrency) { state.lastCurrency = cur; store.set("lastCurrency", cur); loadTrend(); }
     }
   } catch (e) {
-    state.error = e.message || "Gagal memproses gambar";
+    state.error = e.name === "AbortError"
+      ? "AI terlalu lama menjawab. Cek sinyal internet, lalu coba lagi."
+      : e instanceof TypeError
+        ? "Tidak ada koneksi internet. Scan butuh internet."
+        : e.message || "Gagal memproses gambar";
   } finally {
+    clearTimeout(timer);
     state.busy = false;
     document.body.classList.remove("scanning");
     renderAll();
@@ -373,6 +396,7 @@ function placeFree(el, left, top, area) {
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 function countUp(el, value, cur, animate) {
   cancelAnimationFrame(el._raf);
+  clearTimeout(el._done);
   if (!animate || reduceMotion.matches) { el.textContent = fmt(value, cur); return; }
   el.textContent = fmt(0, cur);
   const start = performance.now(), dur = 700;
@@ -382,6 +406,9 @@ function countUp(el, value, cur, animate) {
     if (t < 1) el._raf = requestAnimationFrame(step);
   };
   el._raf = requestAnimationFrame(step);
+  // pengaman: kalau animasi tertahan (tab di latar belakang), angka akhir tetap tampil
+  clearTimeout(el._done);
+  el._done = setTimeout(() => { cancelAnimationFrame(el._raf); el.textContent = fmt(value, cur); }, dur + 80);
 }
 
 // Mata uang label rak: pilihan pengguna, atau yang dikenali AI

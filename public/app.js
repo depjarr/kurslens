@@ -95,7 +95,9 @@ function convert(amount, from, to) {
 function fmt(amount, cur, forceDec) {
   const dec = forceDec ?? (ZERO_DEC.has(cur) ? 0 : 2);
   try {
-    return new Intl.NumberFormat("id-ID", { style: "currency", currency: cur, currencyDisplay: "narrowSymbol", minimumFractionDigits: dec, maximumFractionDigits: dec })
+    // CNY pakai "CN¥" supaya tidak tertukar dengan yen Jepang (¥)
+    const display = cur === "CNY" ? "symbol" : "narrowSymbol";
+    return new Intl.NumberFormat("id-ID", { style: "currency", currency: cur, currencyDisplay: display, minimumFractionDigits: dec, maximumFractionDigits: dec })
       .format(amount).replace(/\s/g, "");
   } catch { return `${amount.toLocaleString("id-ID")} ${cur}`; }
 }
@@ -302,6 +304,44 @@ function mapBox(b) {
 }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// Area kamera yang tidak tertutup tombol: di HP/tablet ada bar atas + chip di atas,
+// dan dock tombol + kartu hasil di bawah. Stiker tidak boleh jatuh di belakangnya.
+function visibleRect(el) {
+  if (!el || el.hidden || !el.offsetParent) return null;
+  const r = el.getBoundingClientRect();
+  return r.width && r.height ? r : null;
+}
+function freeArea() {
+  const stage = $("stage"), sr = stage.getBoundingClientRect();
+  let top = 16;
+  const blockers = [];
+  if (!isDesk()) {
+    for (const el of [document.querySelector(".cam-top"), document.querySelector(".cam-chips")]) {
+      const r = visibleRect(el);
+      if (r) top = Math.max(top, r.bottom - sr.top + 10);
+    }
+    for (const el of [document.querySelector(".dock"), $("card")]) {
+      const r = visibleRect(el);
+      // offsetTop: posisi akhir (tidak terpengaruh animasi muncul kartu)
+      if (r) blockers.push({ left: r.left - sr.left, right: r.right - sr.left, top: el.offsetTop - stage.offsetTop });
+    }
+  }
+  return { top, blockers, cw: stage.clientWidth, ch: stage.clientHeight };
+}
+// Taruh elemen (stiker/label produk) di area bebas: utamakan posisi yang diminta,
+// kalau menabrak tombol di bawah, naikkan; tidak pernah lebih tinggi dari chip atas.
+function placeFree(el, left, top, area) {
+  const w = el.offsetWidth, h = el.offsetHeight;
+  left = clamp(left, 12, area.cw - w - 12);
+  let bottom = area.ch - 16;
+  for (const b of area.blockers) {
+    if (left < b.right && left + w > b.left) bottom = Math.min(bottom, b.top - 12);
+  }
+  const maxTop = Math.max(area.top, bottom - h);
+  el.style.left = left + "px";
+  el.style.top = clamp(top, area.top, maxTop) + "px";
+}
+
 function renderOverlay() {
   const st = $("sticker"), corners = $("corners"), tag = $("productTag");
   const r = state.result;
@@ -311,8 +351,7 @@ function renderOverlay() {
   const p = mainPrice(r);
   const boxSrc = p && r.price_box?.found ? r.price_box : r.product_box?.found ? r.product_box : null;
   const box = boxSrc ? mapBox(boxSrc) : null;
-  const cam = $("stage"), cw = cam.clientWidth, ch = cam.clientHeight;
-  const topSafe = isDesk() ? 16 : 116;
+  const area = freeArea(), { cw, ch } = area;
 
   if (box) {
     Object.assign(corners.style, { left: box.x - 10 + "px", top: box.y - 10 + "px", width: box.w + 20 + "px", height: box.h + 20 + "px" });
@@ -326,20 +365,17 @@ function renderOverlay() {
     $("stSub").textContent = `${fmt(p.amount, cur)}${p.label ? " · " + p.label.toLowerCase() : ""}`;
     st.hidden = false;
     const sw = st.offsetWidth, sh = st.offsetHeight;
-    let left = box ? box.x + box.w / 2 - sw / 2 : cw / 2 - sw / 2;
+    const left = box ? box.x + box.w / 2 - sw / 2 : cw / 2 - sw / 2;
     let top = box ? box.y - sh - 18 : ch * 0.32;
-    if (box && top < topSafe + 4) top = box.y + box.h + 18;
-    st.style.left = clamp(left, 12, cw - sw - 12) + "px";
-    st.style.top = clamp(top, topSafe, ch - sh - 20) + "px";
+    if (box && top < area.top) top = box.y + box.h + 18; // tidak muat di atas label → taruh di bawahnya
+    placeFree(st, left, top, area);
   } else if (r.product_name_translated) {
     tag.innerHTML = esc(r.product_name_translated);
     tag.hidden = false;
-    const tw = tag.offsetWidth, th = tag.offsetHeight;
+    const tw = tag.offsetWidth;
     let left = box ? box.x + box.w + 12 : cw / 2 - tw / 2;
     if (box && left + tw > cw - 12) left = box.x - tw - 12;
-    const top = box ? box.y + box.h * 0.3 : ch * 0.35;
-    tag.style.left = clamp(left, 12, cw - tw - 12) + "px";
-    tag.style.top = clamp(top, topSafe, ch - th - 20) + "px";
+    placeFree(tag, left, box ? box.y + box.h * 0.3 : ch * 0.35, area);
   }
 }
 
@@ -614,8 +650,8 @@ function closeSheet(id) { $(id).hidden = true; }
 
 function renderAll() {
   renderPair();
+  renderCard(); // kartu dulu: tingginya menentukan posisi dock, lalu stiker menghindari keduanya
   renderOverlay();
-  renderCard();
   renderDetail();
   renderCurrencyPage();
 }

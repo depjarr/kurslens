@@ -184,7 +184,7 @@ body.scanning .corners i { animation: breathe .8s ease-in-out infinite alternate
 #autoBtn[aria-pressed="true"] .switch { background: var(--accent); }
 #autoBtn[aria-pressed="true"] .switch span { left: 14px; background: var(--accent-ink); }
 
-.dock { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + var(--card-h, 0px) + 32px); display: flex; align-items: center; gap: 22px; padding: 8px 10px; border-radius: 48px; transition: bottom .2s; }
+.dock { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom) + var(--card-h, 0px) + 32px); display: flex; align-items: center; gap: 22px; padding: 8px 10px; border-radius: 48px; }
 .dock .icon-btn { width: 48px; height: 48px; cursor: pointer; }
 .shutter { width: 72px; height: 72px; border-radius: 36px; border: 3px solid var(--glass-ink); background: transparent; padding: 5px; }
 .shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--glass-ink); transition: transform .12s; }

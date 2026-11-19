@@ -156,21 +156,21 @@ const SCAN_SCHEMA = {
     },
     allergens: { type: "array", items: { type: "string" } },
     diet_check: DIET_CHECK,
-    notes: { type: "string", description: "info singkat: babi/alkohol/halal, kafein, dll. Kosong jika tidak ada" },
+    notes: { type: "string", description: "product: info singkat babi/alkohol/halal, kafein, dll. menu: pajak/servis, minimal order, dll. Kosong jika tidak ada" },
   },
 };
 
-// Mode menu restoran: satu foto → banyak item
-const MENU_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  required: ["found", "currency", "items", "notes"],
-  properties: {
-    found: { type: "boolean", description: "true jika ada menu/daftar harga yang terbaca" },
-    currency: { type: "string", description: "kode ISO 4217 untuk harga di menu, mis. JPY" },
+// Satu skema untuk semua foto: AI sendiri yang menentukan apakah ini produk/label harga atau menu restoran.
+const MENU_FIELDS = {
+    kind: {
+      type: "string",
+      enum: ["product", "menu"],
+      description: "menu = foto berisi daftar beberapa hidangan/minuman dengan harga (menu restoran, papan menu, daftar harga kafe); product = produk/label harga/kemasan",
+    },
+    currency: { type: "string", description: "kode ISO 4217 untuk harga di menu, mis. JPY. Kosong jika kind=product" },
     items: {
       type: "array",
-      description: "semua item menu yang terbaca, urut seperti di menu (maks 40)",
+      description: "kind=menu: semua item menu yang terbaca, urut seperti di menu (maks 40). kind=product: kosong",
       items: {
         type: "object",
         additionalProperties: false,
@@ -186,8 +186,11 @@ const MENU_SCHEMA = {
         },
       },
     },
-    notes: { type: "string", description: "info umum menu: pajak/servis, minimal order, dll. Kosong jika tidak ada" },
-  },
+};
+const SCHEMA = {
+  ...SCAN_SCHEMA,
+  required: ["kind", ...SCAN_SCHEMA.required, "currency", "items"],
+  properties: { kind: MENU_FIELDS.kind, ...SCAN_SCHEMA.properties, currency: MENU_FIELDS.currency, items: MENU_FIELDS.items },
 };
 
 // Gemini paling akurat memberi kotak dalam format bawaannya: box_2d = [ymin, xmin, ymax, xmax] skala 0..1000.
@@ -207,8 +210,8 @@ const GEMINI_BOX = {
   },
 };
 const GEMINI_SCHEMA = {
-  ...SCAN_SCHEMA,
-  properties: { ...SCAN_SCHEMA.properties, price_box: GEMINI_BOX, product_box: GEMINI_BOX },
+  ...SCHEMA,
+  properties: { ...SCHEMA.properties, price_box: GEMINI_BOX, product_box: GEMINI_BOX },
 };
 
 function fromBox2d(b) {
@@ -219,7 +222,7 @@ function fromBox2d(b) {
   return { found: true, x: xmin, y: ymin, w: xmax - xmin, h: ymax - ymin };
 }
 
-function buildPrompt({ language, sourceCurrency, camera, mode, diet }) {
+function buildPrompt({ language, sourceCurrency, camera, diet }) {
   const currencyHint =
     sourceCurrency === "auto"
       ? "Tentukan mata uang dari konteks (simbol, bahasa, toko). ¥/円 = JPY, ₩/원 = KRW, ฿ = THB, ₽/руб = RUB, RM = MYR, S$ = SGD."
@@ -230,22 +233,18 @@ function buildPrompt({ language, sourceCurrency, camera, mode, diet }) {
       "Untuk 'Halal': hanya 'cocok' bila ada logo/tulisan halal atau jelas tanpa babi, alkohol, dan daging tak jelas; selain itu tidak_pasti. Jangan menebak terlalu yakin."
     : "Profil makanan pengguna kosong: status 'tidak_pasti' dan alasan kosong.";
 
-  if (mode === "menu") {
-    const system =
-      "Kamu asisten wisatawan yang membaca menu restoran/kafe/warung dari foto. Tulisan bisa dalam bahasa apa pun; baca dengan teliti. " +
-      `Daftarkan setiap hidangan/minuman beserta harganya (price=null jika tidak tertulis), terjemahkan nama dan jelaskan isinya singkat dalam ${language}. ` +
-      "Beri tag yang membantu (pedas, babi, sapi, ayam, seafood, alkohol, vegetarian, dll). " +
-      dietHint +
-      " Jangan mengarang item atau harga yang tidak ada di foto. Jawab ringkas.";
-    return { system, user: `Foto menu. ${currencyHint}` };
-  }
   const cameraHint =
     camera === "front"
       ? "Foto dari kamera depan/webcam: pengguna biasanya memegang produk ke arah kamera, jadi fokus ke produk yang dipegang, abaikan wajah/orang."
-      : "Foto dari kamera belakang: biasanya rak toko dengan label harga.";
+      : "Foto dari kamera belakang: biasanya rak toko, kemasan produk, atau menu restoran.";
   const system =
-    "Kamu asisten belanja untuk wisatawan. Dari foto kamera, kenali produk utama dan label harganya. " +
-    "Tulisan bisa dalam bahasa apa pun (Jepang, Korea, Thai, Rusia, Mandarin, Arab, dll); baca dengan teliti. " +
+    "Kamu asisten wisatawan untuk belanja dan makan di luar negeri. Tulisan bisa dalam bahasa apa pun (Jepang, Korea, Thai, Rusia, Mandarin, Arab, dll); baca dengan teliti. " +
+    "LANGKAH 1: tentukan kind. 'menu' jika foto berisi daftar beberapa hidangan/minuman dengan harga (menu restoran, papan menu, daftar harga kafe/warung). " +
+    "Selain itu 'product' (satu produk, kemasan, atau label harga rak). " +
+    "JIKA kind='menu': isi currency dan items (setiap hidangan/minuman, price=null jika tidak tertulis, terjemahkan nama, jelaskan isinya singkat, " +
+    "tag seperti pedas/babi/sapi/ayam/seafood/alkohol/vegetarian, dan diet_status per item). " +
+    "Untuk field produk isi nilai kosong: subject='none', nama kosong, prices kosong, kotak found=false, nutrition null dengan source='none', allergens kosong, diet_check tidak_pasti. " +
+    "JIKA kind='product': currency kosong dan items kosong, lalu kenali produk utama dan label harganya. " +
     "Ambil semua harga yang terlihat untuk produk itu (di Jepang: 税込 = termasuk pajak, 税抜/本体価格 = sebelum pajak). " +
     `Terjemahkan nama produk dan tulisan penting ke ${language}. ` +
     "Gizi: pakai angka dari label gizi jika terlihat (source='label'); jika tidak, perkirakan dari jenis produk (source='estimate'); jika tidak bisa, null dan source='none'. " +
@@ -256,13 +255,13 @@ function buildPrompt({ language, sourceCurrency, camera, mode, diet }) {
   return { system, user: `${cameraHint} ${currencyHint}` };
 }
 
-async function scanWithClaude({ mime, data, prompt, mode }) {
+async function scanWithClaude({ mime, data, prompt }) {
   const response = await client.beta.messages.create({
     model: MODEL,
-    max_tokens: mode === "menu" ? 12000 : 4000,
+    max_tokens: 12000, // menu panjang butuh ruang; produk biasa memakai jauh lebih sedikit
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    output_config: { effort: "low", format: { type: "json_schema", schema: mode === "menu" ? MENU_SCHEMA : SCAN_SCHEMA } },
+    output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
     system: prompt.system,
     messages: [
       {
@@ -281,8 +280,7 @@ async function scanWithClaude({ mime, data, prompt, mode }) {
   return JSON.parse(text);
 }
 
-async function scanWithGemini({ mime, data, prompt, mode }) {
-  const menu = mode === "menu";
+async function scanWithGemini({ mime, data, prompt }) {
   const response = await gemini.models.generateContent({
     model: MODEL,
     contents: [
@@ -292,18 +290,16 @@ async function scanWithGemini({ mime, data, prompt, mode }) {
       },
     ],
     config: {
-      systemInstruction: menu ? prompt.system : prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
+      systemInstruction: prompt.system + " Kotak ditulis sebagai box_2d [ymin, xmin, ymax, xmax] skala 0..1000.",
       responseMimeType: "application/json",
-      responseJsonSchema: menu ? MENU_SCHEMA : GEMINI_SCHEMA,
+      responseJsonSchema: GEMINI_SCHEMA,
     },
   });
   const text = response.text;
   if (!text) throw new Error("Gemini tidak memberi jawaban (mungkin gambar diblokir filter keamanan).");
   const out = JSON.parse(text);
-  if (!menu) {
-    out.price_box = fromBox2d(out.price_box);
-    out.product_box = fromBox2d(out.product_box);
-  }
+  out.price_box = fromBox2d(out.price_box);
+  out.product_box = fromBox2d(out.product_box);
   return out;
 }
 
@@ -319,7 +315,6 @@ app.post("/api/scan", async (req, res) => {
   if (PROVIDER !== "gemini" && PROVIDER !== "claude") return res.status(500).json({ error: `AI_PROVIDER "${PROVIDER}" tidak dikenal. Pakai gemini atau claude.` });
 
   const { image, language = "Bahasa Indonesia", sourceCurrency = "auto", camera = "back" } = req.body || {};
-  const mode = req.body?.mode === "menu" ? "menu" : "product";
   // Profil makanan: daftar label pendek dari aplikasi, dibatasi supaya tidak bisa dipakai menyelipkan instruksi panjang
   const diet = (Array.isArray(req.body?.diet) ? req.body.diet : [])
     .filter((d) => typeof d === "string")
@@ -329,10 +324,11 @@ app.post("/api/scan", async (req, res) => {
   const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(image || "");
   if (!m) return res.status(400).json({ error: "Gambar tidak valid" });
 
-  const args = { mime: m[1], data: m[2], mode, prompt: buildPrompt({ language, sourceCurrency, camera, mode, diet }) };
+  const args = { mime: m[1], data: m[2], prompt: buildPrompt({ language, sourceCurrency, camera, diet }) };
   try {
     const result = PROVIDER === "gemini" ? await scanWithGemini(args) : await scanWithClaude(args);
-    res.json({ ...result, kind: mode });
+    const kind = result.kind === "menu" ? "menu" : "product";
+    res.json({ ...result, kind, found: kind === "menu" ? (result.items || []).length > 0 : result.subject !== "none" });
   } catch (err) {
     console.error(err);
     const status = err.status === 422 ? 422 : err.status === 429 || err instanceof Anthropic.RateLimitError ? 429 : 500;

@@ -39,7 +39,6 @@ const state = {
   error: null,
   manualOpen: false,
   pick: "from",        // kartu mana yang aktif di halaman mata uang
-  mode: store.get("mode", "product"), // "product" = satu produk/label, "menu" = menu restoran
   diet: store.get("diet", []),        // id profil makanan, lihat DIET_OPTIONS
   lastImage: null,                    // foto terakhir yang di-scan, untuk kartu Bagikan
 };
@@ -275,7 +274,7 @@ async function scan(image) {
         body: JSON.stringify({
           image, language: state.lang, sourceCurrency: state.from,
           camera: source === "front" ? "front" : "back",
-          mode: state.mode, diet: dietForAI(),
+          diet: dietForAI(), // AI sendiri yang menentukan: produk/label harga atau menu restoran
         }),
       });
       data = await r.json();
@@ -514,7 +513,7 @@ function renderCard() {
   } else if (r.subject === "none") {
     html = `<div class="eyebrow">${state.busy ? "Membaca…" : "Belum terbaca"}</div>
       <div class="card-title">Belum ada produk terlihat</div>
-      <div class="card-sub">Dekatkan kamera ke label harga atau produk.</div>`;
+      <div class="card-sub">Dekatkan kamera ke label harga, produk, atau menu.</div>`;
   } else {
     const p = mainPrice(r);
     const eyebrow = state.busy ? "Membaca produk baru…" : !state.resultFresh ? "Hasil sebelumnya" : p ? "Terdeteksi" : "Produk dikenali";
@@ -746,9 +745,6 @@ function renderDiet() {
   $("dietAllergy").innerHTML = DIET_OPTIONS.filter((o) => o.group === "allergy").map(btn).join("");
 }
 
-function renderMode() {
-  for (const b of document.querySelectorAll("[data-mode]")) b.setAttribute("aria-pressed", b.dataset.mode === state.mode);
-}
 
 // ---------------- Bagikan (WhatsApp, dll) ----------------
 function loadImg(src) {
@@ -927,15 +923,6 @@ document.addEventListener("click", (e) => {
     el.setAttribute("aria-pressed", state.diet.includes(id));
     return renderAll();
   }
-  if (el.dataset.mode) {
-    if (state.mode === el.dataset.mode) return;
-    state.mode = el.dataset.mode;
-    store.set("mode", state.mode);
-    renderMode();
-    state.result = null; state.resultFresh = false; scanThumb = null;
-    renderAll();
-    return toast(state.mode === "menu" ? "Mode menu: foto seluruh menu restoran" : "Mode produk: arahkan ke label harga atau produk");
-  }
   if (el.dataset.cur) {
     setCurrency(state.pick, el.dataset.cur);
     if (state.pick === "from") { state.pick = "to"; renderCurrencyPage(); }
@@ -1050,8 +1037,10 @@ function demoDiet(contains, halalKnown) {
   if (state.diet.includes("halal") && !halalKnown) return { status: "tidak_pasti", reasons: ["Tidak ada logo halal di kemasan"] };
   return { status: "cocok", reasons: [] };
 }
+// Demo bergiliran: label harga onigiri → botol teh (tanpa harga) → menu restoran
 function demoResult(source) {
-  if (state.mode === "menu") {
+  const turn = demoTurn++ % 3;
+  if (turn === 2) {
     const item = (o, t, d, price, tags, contains) => {
       const c = demoDiet(contains, false);
       return { name_original: o, name_translated: t, description: d, price, tags, diet_status: c.status, diet_reason: c.reasons[0] || "" };
@@ -1074,7 +1063,7 @@ function demoResult(source) {
   const tb = tagEl?.getBoundingClientRect();
   const box = tb ? { found: true, x: (tb.left - cam.left) / cam.width, y: (tb.top - cam.top) / cam.height, w: tb.width / cam.width, h: tb.height / cam.height } : { found: false, x: 0, y: 0, w: 0, h: 0 };
   const none = { found: false, x: 0, y: 0, w: 0, h: 0 };
-  if (demoTurn++ % 2 === 1) {
+  if (turn === 1) {
     return {
       subject: "product", product_name_original: "緑茶 無糖 525ml", product_name_translated: "Teh hijau tanpa gula",
       prices: [], price_box: none, product_box: none,
@@ -1142,7 +1131,6 @@ if ("serviceWorker" in navigator && !DEMO) {
 
 // ---------------- Start ----------------
 renderInstall();
-renderMode();
 applyLayout();
 applyTheme();
 $("autoBtn").setAttribute("aria-pressed", state.auto);

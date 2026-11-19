@@ -336,11 +336,6 @@ body.scanning .shutter span { background: var(--accent); }
 .saved-item small { color: var(--muted); font-size: 12px; }
 .saved-item .p { font-weight: 800; font-size: 14px; }
 .empty { color: var(--muted); font-size: 14px; padding: 16px 0; margin: 0; }
-/* ---- Mode Produk / Menu ---- */
-.mode-switch { display: inline-flex; padding: 3px; border-radius: 15px; height: 30px; }
-.mode-switch button { border: 0; background: transparent; color: inherit; height: 24px; padding: 0 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
-.mode-switch button[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
-
 /* ---- Profil makanan ---- */
 .diet-box { padding: 14px 16px 16px; }
 .diet-help { margin: 0 0 4px; font-size: 13px; color: var(--muted); }

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="id" data-theme="indigo">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KursLens</title>
+<meta name="description" content="Arahkan kamera ke label harga di luar negeri: harga langsung dalam rupiah, terjemahan kemasan, dan info gizi." />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0D0D14" media="(prefers-color-scheme: dark)" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="KursLens" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fredoka:wght@400;500;600;700&family=IBM+Plex+Sans+JP:wght@400;500;700&display=swap" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== Onboarding ===== -->
+  <section id="welcome" class="view onboard" hidden>
+    <div class="brand"><img class="brand-mark" src="/icons/icon.svg" alt="" />KursLens</div>
+    <div class="hero-scene" aria-hidden="true">
+      <div class="scene-blur"><i></i><i></i><i></i></div>
+      <div class="scene-shelf"></div>
+      <div class="shelf-tag">
+        <div class="jp small">ツナマヨネーズ おにぎり</div>
+        <div class="tag-price"><span class="jp tax">税込</span><span>¥140</span></div>
+      </div>
+      <img class="hero-pipit" src="/icons/pipit.svg" alt="" />
+      <div class="sticker hero-sticker">
+        <div class="sticker-top"><span>IDR</span></div>
+        <div class="sticker-amount">Rp16.054</div>
+        <div class="sticker-sub">dari ¥140 · termasuk pajak</div>
+      </div>
+    </div>
+    <h1 class="onboard-title">Harga di rak, langsung dalam rupiah.</h1>
+    <p class="onboard-text">Arahkan kamera ke label harga atau produk di tanganmu. KursLens menghitung harganya, menerjemahkan kemasan, dan membaca info gizinya.</p>
+    <div class="grow"></div>
+    <button class="btn btn-accent" data-go="how">Mulai</button>
+    <button class="btn btn-ghost" data-go="camera">Langsung ke kamera</button>
+  </section>
+
+  <section id="how" class="view onboard light" hidden>
+    <button class="icon-btn plain" data-go="welcome" aria-label="Kembali">
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5"/></svg>
+    </button>
+    <h1 class="onboard-title">Tiga langkah, di depan rak.</h1>
+    <ol class="steps">
+      <li class="step">
+        <div><span class="step-no">1</span><h2>Pilih mata uang tujuan</h2><p>Mata uang asal dikenali dari ¥, ₩, ฿ di label.</p></div>
+        <div class="step-art" aria-hidden="true"><span class="pill-primary">JPY → IDR</span><span class="pill-soft">KRW → IDR</span></div>
+      </li>
+      <li class="step">
+        <div><span class="step-no">2</span><h2>Arahkan ke label atau produk</h2><p class="no-desk">Kamera belakang untuk rak, kamera depan untuk produk di tanganmu.</p><p class="only-desk">Pegang produk atau label harga di depan webcam.</p></div>
+        <div class="step-art framed" aria-hidden="true"><div class="shelf-tag mini"><div class="jp small">メロンパン</div><div class="tag-price"><span>¥162</span></div></div></div>
+      </li>
+      <li class="step">
+        <div><span class="step-no">3</span><h2>Baca stikernya</h2><p>Pakai kurs terbaru. Ketuk untuk terjemahan, kalori, alergen.</p></div>
+        <div class="step-art" aria-hidden="true"><div class="sticker mini-sticker"><div class="sticker-top"><span>IDR</span></div><div class="sticker-amount">Rp18.577</div></div></div>
+      </li>
+    </ol>
+    <div class="grow"></div>
+    <p class="fine">Foto dikirim ke AI hanya untuk dibaca dan tidak disimpan di aplikasi. Butuh koneksi internet.</p>
+    <button class="btn btn-primary" data-go="camera">Izinkan kamera</button>
+  </section>
+
+  <!-- ===== Camera ===== -->
+  <section id="camera" class="view" hidden>
+    <div id="stage" class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <img id="still" alt="" hidden />
+      <div id="noCam" class="no-cam" hidden>
+        <p>Kamera tidak bisa dibuka.</p>
+        <p class="fine">Izinkan akses kamera, dan buka lewat HTTPS atau localhost. Kamu tetap bisa unggah foto dari galeri.</p>
+      </div>
+      <div id="overlay" aria-live="polite">
+        <div id="corners" class="corners" hidden><i></i><i></i><i></i><i></i></div>
+        <button id="sticker" class="sticker floating" hidden>
+          <div class="sticker-top"><span id="stCode">IDR</span><span class="st-hint">ketuk untuk detail</span></div>
+          <div class="sticker-amount" id="stAmount"></div>
+          <div class="sticker-sub" id="stSub"></div>
+        </button>
+        <div id="productTag" class="product-tag" hidden></div>
+      </div>
+    </div>
+
+    <header class="cam-top">
+      <div class="nav-brand"><img class="brand-mark" src="/icons/icon.svg" alt="" />KursLens</div>
+      <button id="pairBtn" class="glass pair">
+        <span id="pairFrom">Auto</span>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4"/></svg>
+        <span id="pairTo">IDR</span>
+        <span id="pairRate" class="pair-rate" hidden></span>
+      </button>
+      <div class="grow"></div>
+      <button id="settingsBtn" class="glass icon-btn" aria-label="Tema dan pengaturan">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M3 6h9M15 6h2M3 14h2M8 14h9"/><circle cx="13.5" cy="6" r="1.8"/><circle cx="6.5" cy="14" r="1.8"/></svg>
+      </button>
+    </header>
+    <div class="cam-chips">
+      <span id="trendChip" class="glass chip" hidden></span>
+      <span id="rateTime" class="glass chip muted-chip">Memuat kurs…</span>
+      <button id="autoBtn" class="glass chip" aria-pressed="false"><span class="switch" aria-hidden="true"><span></span></span>Auto</button>
+      <span id="camLabel" class="glass chip" hidden>Kamera depan · teks dibalik otomatis</span>
+    </div>
+
+    <div class="dock glass">
+      <label class="icon-btn plain" aria-label="Pilih foto dari galeri">
+        <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="3"/><path d="M2.5 13.5l4-4 3 3 2.5-2.5 5.5 5.5"/></svg>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+      </label>
+      <button id="shutter" class="shutter" aria-label="Scan sekarang"><span></span><b class="shutter-label">Scan sekarang</b></button>
+      <button id="flipBtn" class="icon-btn plain" aria-label="Ganti kamera">
+        <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8.5A7.5 7.5 0 0 1 17.5 6.5M18 13.5A7.5 7.5 0 0 1 4.5 15.5"/><path d="M17.5 2.5v4h-4M4.5 19.5v-4h4"/></svg>
+      </button>
+    </div>
+
+    <div id="card" class="card" hidden></div>
+    <aside id="sidePanel" class="side-panel" aria-label="Hasil scan"></aside>
+  </section>
+
+  <!-- ===== Detail ===== -->
+  <section id="detail" class="sheet-view" hidden>
+    <div class="detail-top">
+      <button class="icon-btn on-bg" data-close="detail" aria-label="Kembali ke kamera">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7L9 11.5 13.5 7"/></svg>
+      </button>
+      <span id="detailMeta" class="detail-meta"></span>
+    </div>
+    <div class="sheet-body" id="detailBody"></div>
+  </section>
+
+  <!-- ===== Currency ===== -->
+  <section id="currency" class="sheet-view light" hidden>
+    <div class="sheet-page">
+      <div class="page-head">
+        <button class="icon-btn plain" data-close="currency" aria-label="Tutup">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15"/></svg>
+        </button>
+        <h1>Mata uang</h1>
+      </div>
+      <div class="pair-cards">
+        <button id="fromCard" class="pair-card active"><small>Dari</small><b id="fromCode">Auto</b><span id="fromName">Deteksi otomatis</span></button>
+        <button id="swapBtn" class="swap" aria-label="Tukar arah">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h11l-3-3M15 12H4l3 3"/></svg>
+        </button>
+        <button id="toCard" class="pair-card"><small>Ke</small><b id="toCode">IDR</b><span id="toName">Rupiah</span></button>
+      </div>
+      <div id="trendBox" class="trend-box" hidden></div>
+      <label class="search">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M12.5 12.5L16 16"/></svg>
+        <span class="sr-only">Cari mata uang</span>
+        <input id="curSearch" type="search" placeholder="Cari yen, won, SGD…" autocomplete="off" />
+      </label>
+      <label id="autoRow" class="row-toggle">
+        <span>Deteksi otomatis dari simbol di label</span>
+        <input id="autoDetect" type="checkbox" />
+      </label>
+      <div class="list-head"><span id="listFor">Dari</span><span id="listUnit">1 unit dalam rupiah</span></div>
+      <div id="curList" class="cur-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== Settings ===== -->
+  <section id="settings" class="sheet-view light" hidden>
+    <div class="sheet-page">
+      <div class="page-head">
+        <button class="icon-btn plain" data-close="settings" aria-label="Kembali ke kamera">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5"/></svg>
+        </button>
+        <h1>Tampilan</h1>
+      </div>
+      <h2 class="section-label">Tema</h2>
+      <div id="themeGrid" class="theme-grid"></div>
+      <h2 class="section-label">Lainnya</h2>
+      <div class="group">
+        <label class="group-row">
+          <span>Ikuti mode terang/gelap perangkat</span>
+          <input type="checkbox" id="themeAuto" />
+        </label>
+        <label class="group-row">
+          <span>Bahasa terjemahan</span>
+          <select id="lang">
+            <option>Bahasa Indonesia</option>
+            <option>English</option>
+            <option>Basa Jawa</option>
+            <option>Bahasa Melayu</option>
+          </select>
+        </label>
+      </div>
+      <div id="installBox" hidden>
+        <h2 class="section-label">Aplikasi</h2>
+        <div class="group install-box">
+          <div class="install-row">
+            <img src="/icons/icon-192.png" alt="" width="44" height="44" />
+            <div><b>Pasang KursLens</b><small id="installHint">Buka langsung dari layar utama, tanpa browser.</small></div>
+            <button id="installBtn" class="small-btn">Pasang</button>
+          </div>
+          <ol id="iosSteps" class="ios-steps" hidden>
+            <li>Ketuk tombol <b>Bagikan</b> di Safari (kotak dengan panah ke atas)</li>
+            <li>Pilih <b>Tambah ke Layar Utama</b></li>
+            <li>Ketuk <b>Tambah</b></li>
+          </ol>
+        </div>
+      </div>
+      <h2 class="section-label">Tersimpan</h2>
+      <div id="savedList" class="group"></div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</div>
+<script src="app.js" type="module"></script>
+</body>
+</html>

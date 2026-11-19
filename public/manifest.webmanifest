@@ -1,0 +1,19 @@
+{
+  "name": "KursLens",
+  "short_name": "KursLens",
+  "description": "Arahkan kamera ke label harga di luar negeri: harga langsung dalam rupiah, terjemahan kemasan, dan info gizi.",
+  "lang": "id",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2F2F7",
+  "theme_color": "#5B4CF0",
+  "categories": ["travel", "shopping", "finance", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
